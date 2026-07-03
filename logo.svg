@@ -1,0 +1,45 @@
+<svg width="220" height="220" viewBox="0 0 220 220" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="fond" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1e3a5f"/>
+      <stop offset="100%" stop-color="#0f1f33"/>
+    </linearGradient>
+    <linearGradient id="toit" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ff8a5c"/>
+      <stop offset="100%" stop-color="#f4623a"/>
+    </linearGradient>
+  </defs>
+
+  <!-- fond arrondi -->
+  <rect x="4" y="4" width="212" height="212" rx="44" fill="url(#fond)"/>
+
+  <!-- ondes radar émises par la cheminée -->
+  <g stroke="#ffd166" stroke-width="7" fill="none" stroke-linecap="round">
+    <path d="M 148 62 A 26 26 0 0 1 158 88" opacity="0.95"/>
+    <path d="M 158 46 A 44 44 0 0 1 174 88" opacity="0.6"/>
+    <path d="M 168 30 A 62 62 0 0 1 190 88" opacity="0.3"/>
+  </g>
+
+  <!-- maison -->
+  <g>
+    <!-- corps -->
+    <rect x="62" y="104" width="88" height="66" rx="8" fill="#f7f3ec"/>
+    <!-- toit -->
+    <path d="M 48 110 L 106 62 L 164 110 Q 168 114 162 114 L 50 114 Q 44 114 48 110 Z" fill="url(#toit)"/>
+    <!-- cheminée (l'antenne) -->
+    <rect x="132" y="66" width="13" height="30" rx="3" fill="#f4623a"/>
+    <circle cx="138.5" cy="64" r="6" fill="#ffd166"/>
+    <!-- porte -->
+    <rect x="94" y="132" width="24" height="38" rx="10" fill="#1e3a5f"/>
+    <circle cx="112" cy="152" r="2.6" fill="#ffd166"/>
+    <!-- fenêtre-loupe : l'œil qui surveille -->
+    <circle cx="76" cy="130" r="9" fill="none" stroke="#1e3a5f" stroke-width="5"/>
+    <line x1="82" y1="137" x2="89" y2="144" stroke="#1e3a5f" stroke-width="5" stroke-linecap="round"/>
+  </g>
+
+  <!-- étiquette prix -->
+  <g transform="rotate(-8 163 148)">
+    <rect x="146" y="138" width="40" height="21" rx="6" fill="#ffd166"/>
+    <text x="166" y="153.5" font-family="Arial, sans-serif" font-size="12.5" font-weight="bold" fill="#0f1f33" text-anchor="middle">650€</text>
+  </g>
+</svg>

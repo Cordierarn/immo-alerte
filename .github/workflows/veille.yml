@@ -1,0 +1,45 @@
+name: Veille immo
+
+on:
+  schedule:
+    # toutes les 15 minutes (heure UTC, parfois quelques minutes de retard côté GitHub)
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: veille
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Installer les dépendances
+        run: pip install -r requirements.txt
+
+      - name: Scanner les annonces
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: python immo_alerte.py
+
+      - name: Sauvegarder la mémoire des annonces vues
+        run: |
+          git config user.name "immo-alerte-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add seen.json
+          if ! git diff --cached --quiet; then
+            git commit -m "maj: annonces vues"
+            git pull --rebase
+            git push
+          fi

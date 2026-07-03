@@ -1,0 +1,22 @@
+{
+  "villes": [
+    "Saint-Priest",
+    "Bron",
+    "Vénissieux",
+    "Mions",
+    "Corbas",
+    "Chassieu"
+  ],
+  "prix_max": 650,
+  "meuble": true,
+  "exclure_coloc": true,
+  "pieces_max": 2,
+  "ntfy_topic": "",
+  "mots_exclus": [
+    "colocation",
+    "coloc ",
+    "co-location",
+    "chambre chez l'habitant",
+    "chambre dans"
+  ]
+}
