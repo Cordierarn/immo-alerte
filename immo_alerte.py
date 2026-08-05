@@ -27,6 +27,7 @@ import os
 import re
 import sys
 import time
+import unicodedata
 from datetime import datetime
 from pathlib import Path
 
@@ -88,6 +89,45 @@ def est_demande(titre):
     début du titre : 'recherche locataire sérieux' est bien une offre.
     """
     return bool(re.match(r"(je\s+)?(re)?cherche\b", (titre or "").strip().lower()))
+
+
+# Qui gagne quand la même annonce sort de plusieurs sites : on garde la
+# source la plus utile (particuliers d'abord, lien direct, pas de frais).
+ORDRE_SOURCES = {"Leboncoin": 0, "PAP": 1, "Bien'ici": 2, "SeLoger": 3}
+
+
+def empreinte(annonce):
+    """Clé de rapprochement inter-sites : ville + prix + surface arrondie.
+
+    Renvoie None si la surface manque. C'est volontaire : sans elle, deux
+    studios distincts à 650 € dans la même commune auraient la même clé et
+    l'un des deux ne serait jamais notifié. Rater une annonce coûte plus cher
+    qu'en recevoir une en double, donc en cas de doute on ne rapproche pas.
+    """
+    prix, surface, ville = annonce.get("prix"), annonce.get("surface"), annonce.get("ville")
+    if not prix or not surface or not ville:
+        return None
+    plat = unicodedata.normalize("NFKD", ville.lower())
+    plat = re.sub(r"[^a-z]", "", plat.encode("ascii", "ignore").decode())
+    return f"emp:{plat}|{prix}|{round(surface)}"
+
+
+def rapprocher(annonces):
+    """Fusionne les annonces identiques venant de sites différents."""
+    annonces.sort(key=lambda a: ORDRE_SOURCES.get(a["source"], 9))
+    par_empreinte, uniques = {}, []
+    for a in annonces:
+        emp = empreinte(a)
+        garde = par_empreinte.get(emp) if emp else None
+        if garde is not None:
+            if a["source"] not in garde["aussi"]:
+                garde["aussi"].append(a["source"])
+            continue
+        a["aussi"] = []
+        if emp:
+            par_empreinte[emp] = a
+        uniques.append(a)
+    return uniques
 
 
 def garder(titre, description):
@@ -276,8 +316,10 @@ def topics_ntfy():
 
 def notifier(annonce):
     surface = f" - {annonce['surface']:.0f}m2" if annonce.get("surface") else ""
+    aussi = annonce.get("aussi") or []
+    doublons = f"\n(aussi sur {', '.join(aussi)})" if aussi else ""
     msg = (f"{annonce['prix']}EUR{surface} - {annonce['ville']}\n"
-           f"{annonce['titre']}\n{annonce['url']}")
+           f"{annonce['titre']}\n{annonce['url']}{doublons}")
     log(f"NOUVEAU [{annonce['source']}] {msg.replace(chr(10), ' | ')}")
     for topic in topics_ntfy():
         try:
@@ -349,11 +391,29 @@ def main():
             uniques[a["id"]] = a
     annonces = list(uniques.values())
 
-    nouvelles = [a for a in annonces if a["id"] not in seen]
+    # rapprochement inter-sites : le même logement diffusé sur plusieurs
+    # portails a des identifiants différents, seule l'empreinte les relie
+    avant = len(annonces)
+    annonces = rapprocher(annonces)
+    if avant != len(annonces):
+        log(f"Rapprochement: {avant - len(annonces)} doublon(s) inter-sites fusionne(s)")
+
+    nouvelles = []
+    for a in annonces:
+        emp = empreinte(a)
+        deja = a["id"] in seen or (emp is not None and emp in seen)
+        if not deja:
+            nouvelles.append(a)
+        # on mémorise l'empreinte même pour une annonce déjà connue : c'est ce
+        # qui permet à un jumeau publié plus tard sur un autre site d'être
+        # reconnu, y compris pour les annonces mémorisées avant cette version
+        seen.add(a["id"])
+        if emp:
+            seen.add(emp)
+
     for a in nouvelles:
         if not init_mode:
             notifier(a)
-        seen.add(a["id"])
     save_seen(seen)
 
     if init_mode:
