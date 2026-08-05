@@ -38,9 +38,17 @@
         "search_url": "https://www.leboncoin.fr/recherche?category=10&real_estate_type=2&locations=Saint-Priest_69800,Bron_69500,V%C3%A9nissieux_69200,Mions_69780,Corbas_69960,Chassieu_69680&price=min-650&rooms=1-2&furnished=1&sort=time&order=desc"
       },
       "seloger": {
-        "enabled": false,
+        "enabled": true,
         "heures": [8, 13, 18],
-        "search_url": "https://www.seloger.com/list.htm?projects=1&types=1&natures=1&places=%5B%7B%22inseeCodes%22%3A%5B690290%2C690290%5D%7D%5D&price=NaN%2F650&rooms=1%2C2&furnished=1&sort=d_dt_crea&enterprise=0"
+        "cout_max": 45,
+        "search_url": [
+          "https://www.seloger.com/immobilier/locations/immo-saint-priest-69/bien-appartement/",
+          "https://www.seloger.com/immobilier/locations/immo-bron-69/bien-appartement/",
+          "https://www.seloger.com/immobilier/locations/immo-venissieux-69/bien-appartement/",
+          "https://www.seloger.com/immobilier/locations/immo-mions-69/bien-appartement/",
+          "https://www.seloger.com/immobilier/locations/immo-corbas-69/bien-appartement/",
+          "https://www.seloger.com/immobilier/locations/immo-chassieu-69/bien-appartement/"
+        ]
       }
     }
   }

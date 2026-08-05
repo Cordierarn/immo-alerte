@@ -88,8 +88,8 @@ tous les topics connus, et un appui sur la notification ouvre l'annonce.
 |---|---|---|---|
 | Bien'ici | ✅ intégré | 0 | API JSON interne accessible |
 | PAP | ✅ intégré | 0 | HTML propre, pas de protection agressive |
-| Leboncoin | ✅ Scrapfly | ~30 cr/appel | DataDome → ASP. Source la plus riche en particuliers |
-| SeLoger | ⚙️ Scrapfly, off | ~30 cr/appel | DataDome. Stock très redondant avec Bien'ici |
+| Leboncoin | ✅ Scrapfly | 30 cr/appel | DataDome → ASP. Source la plus riche en particuliers |
+| SeLoger | ✅ Scrapfly | 35 cr × 6 communes | DataDome. Une URL par commune (voir plus bas) |
 | Logic-Immo | ❌ | — | Même groupe (Aviv) et même stock que SeLoger : payer deux fois |
 | Avendrealouer | ❌ | — | DataDome aussi, apport marginal sur la zone |
 | ParuVendu / Ouest-France Immo | ❌ | — | Quasi rien en location sur l'est lyonnais |
@@ -135,11 +135,27 @@ demandes déguisées en offres (« Recherche studio sur Lyon » arrive avec
    (tous projets confondus). En dessous de `reserve_autre_projet`, on coupe :
    c'est ce qui garantit que la veille immo n'assèche pas l'autre projet.
 
-Projection avec la config par défaut : **~6 400 crédits/mois** pour Leboncoin
-seul (3 % du quota), ~9 100 avec SeLoger activé. La marge est énorme : la
-contrainte réelle n'est plus le budget mais la **réactivité** — une annonce
-publiée à 10 h 05 n'est signalée qu'à 12 h. Ajouter des heures dans `heures`
-coûte ~915 crédits/mois par passage quotidien supplémentaire.
+Projection mesurée : **~6 400 crédits/mois** pour Leboncoin (7 passages/jour,
+30 cr) et **~19 200** pour SeLoger (3 passages/jour × 6 communes × 35 cr), soit
+**~25 600 au total, 13 % du quota**. La contrainte n'est plus le budget mais la
+**réactivité** : une annonce publiée à 10 h 05 n'est signalée qu'à 12 h.
+Ajouter une heure dans `heures` coûte ~915 crédits/mois côté Leboncoin,
+~6 400 côté SeLoger.
+
+### Le cas SeLoger
+
+SeLoger a abandonné `list.htm`. Le schéma actuel n'accepte **qu'une localité
+par URL**, d'où `search_url` qui prend une liste. L'URL départementale a été
+testée et écartée : sur 30 annonces de la page 1, 4 seulement étaient dans la
+zone, toutes des colocations — la page est saturée par Lyon et Villeurbanne.
+
+Son JSON-LD ne contient que des agrégats (nombre d'annonces, fourchette de
+prix). Les données sont donc lues dans les cartes HTML, via les attributs
+`data-testid` — nettement plus stables que les classes CSS générées.
+
+Rendement observé : 4 annonces exploitables sur les 6 communes, contre ~20 pour
+Leboncoin. Beaucoup de colocations sous 650 € et un stock qui recoupe Bien'ici,
+déjà gratuit. Si le budget devenait un sujet, c'est le premier à désactiver.
 
 ### Réglages
 

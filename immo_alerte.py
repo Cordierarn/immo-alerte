@@ -69,10 +69,15 @@ def est_chambre(titre):
 
     On cherche le mot n'importe où dans le titre : Leboncoin est plein de
     'Location Chambres' et de 'LES IRIS location chambres' qu'un simple
-    startswith laissait passer. Un vrai T3 'appartement 2 chambres' serait
-    écarté au passage, mais pieces_max l'exclut déjà de toute façon.
+    startswith laissait passer.
+
+    Mais SeLoger titre ses annonces '2 pièces - 1 chambre - 39 m2', où
+    'chambre' compte les pièces de nuit et ne dit rien du mode de location.
+    On neutralise donc les occurrences précédées d'un nombre avant de
+    chercher, sans quoi tous les T2 de SeLoger seraient écartés à tort.
     """
-    return bool(re.search(r"\bchambres?\b", (titre or "").lower()))
+    t = re.sub(r"\d+\s*chambres?", "", (titre or "").lower())
+    return bool(re.search(r"\bchambres?\b", t))
 
 
 def est_demande(titre):

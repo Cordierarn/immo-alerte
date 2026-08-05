@@ -19,6 +19,8 @@ paramétrable dans config.json justement pour englober toute la zone.
 import json
 import re
 
+from bs4 import BeautifulSoup
+
 from scrapfly_client import scrape, ScrapflyKO
 
 
@@ -83,6 +85,7 @@ def provider_leboncoin(cfg, sf_cfg, garder, log, dev=False):
     res = scrape(url, provider="leboncoin", cfg=sf_cfg, log=log,
                  asp=True, render_js=False, country="fr",
                  cadence=p.get("cadence"),
+                 cost_budget=p.get("cout_max"),
                  # en dev on rejoue la même requête à volonté pour 0 crédit
                  cache=dev, cache_ttl=3600,
                  ignorer_cadence=dev)
@@ -141,72 +144,114 @@ def provider_leboncoin(cfg, sf_cfg, garder, log, dev=False):
 
 # ---------------------------------------------------------------- SeLoger
 
-def provider_seloger(cfg, sf_cfg, garder, log, dev=False):
-    """SeLoger — désactivé par défaut (voir README : stock très redondant
-    avec Bien'ici, qui est déjà couvert gratuitement).
+def _slg_txt(carte, testid):
+    el = carte.select_one(f'[data-testid="{testid}"]')
+    return el.get_text(" ", strip=True) if el else ""
 
-    Extraction volontairement défensive : SeLoger change souvent de structure.
-    On tente le JSON-LD (stable, normalisé) puis __NEXT_DATA__.
+
+def _slg_cartes(html, cfg, garder, log):
+    """Parse les cartes d'une page de résultats SeLoger.
+
+    Le JSON-LD de SeLoger ne contient que des agrégats (nombre d'annonces,
+    fourchette de prix) : aucune annonce exploitable. Les données sont dans
+    le HTML, sur des attributs data-testid nettement plus stables que les
+    classes CSS générées.
     """
-    p = (sf_cfg.get("providers") or {}).get("seloger") or {}
-    if not p.get("enabled"):
-        return []
-    url = p.get("search_url")
-    if not url:
-        log("  SeLoger: 'search_url' absente de config.json, provider ignoré")
-        return []
-
-    res = scrape(url, provider="seloger", cfg=sf_cfg, log=log,
-                 asp=True, render_js=False, country="fr",
-                 cadence=p.get("cadence"),
-                 cache=dev, cache_ttl=3600,
-                 ignorer_cadence=dev)
-
-    annonces = []
-    for bloc in _jsonld(res["content"]):
-        items = bloc.get("itemListElement") if isinstance(bloc, dict) else None
-        for it in items or []:
-            item = it.get("item") if isinstance(it, dict) else None
-            if isinstance(item, dict):
-                annonces.append(item)
-    if not annonces:
-        data = _next_data(res["content"]) or {}
-        pp = (data.get("props") or {}).get("pageProps") or {}
-        annonces = pp.get("listings") or pp.get("items") or []
-    if not annonces:
-        _dump_debug("seloger", res["content"], log)
-        return []
-
+    soup = BeautifulSoup(html, "html.parser")
+    cartes = soup.select('[data-testid="serp-core-classified-card-testid"]')
     results = []
-    for a in annonces:
-        titre = (a.get("name") or a.get("title") or "").strip()
-        desc = a.get("description") or ""
+    for c in cartes:
+        adresse = _slg_txt(c, "cardmfe-description-box-address")
+        brut = _slg_txt(c, "cardmfe-description-box-text-test-id")
+        prix_txt = _slg_txt(c, "cardmfe-price-testid")
+        faits = _slg_txt(c, "cardmfe-keyfacts-testid")
+        desc = _slg_txt(c, "cardmfe-description-text-test-id")
+
+        # le bloc texte commence par « 506€ /mois charges comprises » :
+        # on retire le prix puis la mention, en deux temps (une alternance
+        # non-greedy s'arreterait sur le premier marqueur seulement)
+        titre = re.sub(r"^[^A-Za-z]*€\s*/?\s*mois\s*", "", brut)
+        titre = re.sub(r"^\s*charges comprises\s*", "", titre).strip()
+        titre = titre or faits or adresse
         if not garder(titre, desc):
             continue
 
-        offre = a.get("offers") or {}
-        prix = offre.get("price") if isinstance(offre, dict) else None
-        prix = prix or a.get("price")
-        try:
-            prix = int(float(prix))
-        except (TypeError, ValueError):
+        m = re.search(r"([\d\s ]+)€", prix_txt)
+        if not m:
             continue
+        prix = int(re.sub(r"\D", "", m.group(1)))
         if prix > cfg["prix_max"]:
             continue
 
-        adresse = a.get("address") or {}
-        ville = adresse.get("addressLocality") if isinstance(adresse, dict) else ""
-        lien = a.get("url") or a.get("@id") or ""
+        mp = re.search(r"(\d+)\s*pièces?", faits)
+        if mp and cfg.get("pieces_max") and int(mp.group(1)) > cfg["pieces_max"]:
+            continue
+
+        ms = re.search(r"([\d,]+)\s*m", faits)
+        surface = float(ms.group(1).replace(",", ".")) if ms else None
+
+        mv = re.search(r"([^,]+?)\s*\((\d{5})\)", adresse)
+        ville = mv.group(1).strip() if mv else adresse.split(",")[-1].strip()
+        # SeLoger propose souvent des communes « aux alentours »
+        if not any(v.lower() in adresse.lower() for v in cfg["villes"]):
+            continue
+
+        lien = ""
+        a = c.select_one("a[href]")
+        if a:
+            lien = a["href"]
+            if not lien.startswith("http"):
+                lien = "https://www.seloger.com" + lien
         ident = re.search(r"(\d{6,})", lien)
+
         results.append({
             "id": f"seloger-{ident.group(1) if ident else lien}",
             "titre": titre[:90],
             "prix": prix,
-            "surface": a.get("floorSize", {}).get("value") if isinstance(a.get("floorSize"), dict) else None,
-            "ville": ville or "",
-            "url": lien if lien.startswith("http") else f"https://www.seloger.com{lien}",
+            "surface": surface,
+            "ville": ville,
+            "url": lien,
             "source": "SeLoger",
         })
+    return results, len(cartes)
+
+
+def provider_seloger(cfg, sf_cfg, garder, log, dev=False):
+    """SeLoger — une requête PAR COMMUNE.
+
+    SeLoger a abandonné list.htm : le nouveau schéma d'URL n'accepte qu'une
+    seule localité, et l'URL départementale est saturée de Lyon (mesuré :
+    4 annonces sur 30 dans notre zone, toutes des colocations). Il faut donc
+    une URL par commune, d'où 'search_url' qui accepte une liste.
+
+    C'est le provider le plus cher du projet : 40 crédits par URL et par
+    passage. Voir le README avant d'en ajouter.
+    """
+    p = (sf_cfg.get("providers") or {}).get("seloger") or {}
+    if not p.get("enabled"):
+        return []
+    urls = p.get("search_url")
+    urls = [urls] if isinstance(urls, str) else list(urls or [])
+    if not urls:
+        log("  SeLoger: 'search_url' absente de config.json, provider ignoré")
+        return []
+
+    results = []
+    for i, url in enumerate(urls):
+        # le créneau n'est vérifié que sur la première URL : les suivantes
+        # font partie du même passage, il ne faut pas qu'elles se bloquent
+        res = scrape(url, provider="seloger", cfg=sf_cfg, log=log,
+                     asp=True, render_js=False, country="fr",
+                     cadence=p.get("cadence"),
+                     # cible plus chère que Leboncoin (40 vs 30) : plafond
+                     # dédié plutôt que de relever le global pour tous
+                     cost_budget=p.get("cout_max"),
+                     cache=dev, cache_ttl=3600,
+                     ignorer_cadence=dev or i > 0)
+        trouves, nb_cartes = _slg_cartes(res["content"], cfg, garder, log)
+        if not nb_cartes:
+            _dump_debug(f"seloger{i}", res["content"], log)
+        results.extend(trouves)
     return results
 
 
