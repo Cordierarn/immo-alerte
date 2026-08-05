@@ -2,11 +2,13 @@ name: Veille immo
 
 on:
   schedule:
-    # toutes les 5 minutes (heure UTC, parfois quelques minutes de retard côté GitHub).
-    # Le workflow est le BATTEMENT, pas la cadence de dépense : les providers
-    # gratuits (Bien'ici, PAP) tournent à chaque passage, les providers Scrapfly
-    # sont eux gouvernés par la cadence horaire définie dans config.json.
-    - cron: "*/5 * * * *"
+    # Créneaux voulus, heure de PARIS : 8h, 10h, 12h, 13h, 15h, 18h, 20h.
+    # Le cron GitHub ne connaît que l'UTC, et Paris est à UTC+2 l'été / UTC+1
+    # l'hiver. On déclenche donc sur l'union des deux décalages possibles
+    # (UTC 6-14 et 16-19), deux fois par heure pour absorber les retards de
+    # GitHub, et c'est config.json ('heures') qui retient les 7 bons passages.
+    # Les runs hors créneau ne coûtent rien : ils s'arrêtent avant tout appel.
+    - cron: "5,35 6-14,16-19 * * *"
   workflow_dispatch: {}
 
 permissions:

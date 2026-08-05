@@ -30,11 +30,7 @@
     "reserve_autre_projet": 25000,
     "cout_max_par_requete": 35,
 
-    "cadence": {
-      "pleine": 300,
-      "creuse": 1800,
-      "nuit": 7200
-    },
+    "heures": [8, 10, 12, 13, 15, 18, 20],
 
     "providers": {
       "leboncoin": {
@@ -43,11 +39,7 @@
       },
       "seloger": {
         "enabled": false,
-        "cadence": {
-          "pleine": 1800,
-          "creuse": 3600,
-          "nuit": 21600
-        },
+        "heures": [8, 13, 18],
         "search_url": "https://www.seloger.com/list.htm?projects=1&types=1&natures=1&places=%5B%7B%22inseeCodes%22%3A%5B690290%2C690290%5D%7D%5D&price=NaN%2F650&rooms=1%2C2&furnished=1&sort=d_dt_crea&enterprise=0"
       }
     }

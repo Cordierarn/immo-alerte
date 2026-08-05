@@ -82,6 +82,13 @@ def sauver_ledger(led):
 
 # ---------------------------------------------------------------- Cadence
 
+def _paris(ts=None):
+    """Datetime en heure de Paris (l'heure d'été décale le cron UTC)."""
+    if ts is None:
+        return datetime.now(PARIS) if PARIS else datetime.now()
+    return datetime.fromtimestamp(ts, PARIS) if PARIS else datetime.fromtimestamp(ts)
+
+
 def cadence_requise(cfg, override=None, maintenant=None):
     """Intervalle minimum (en secondes) entre deux appels, selon l'heure.
 
@@ -106,12 +113,41 @@ def cadence_requise(cfg, override=None, maintenant=None):
 
 
 def _peut_appeler(led, provider, cfg, override=None):
+    """(autorisé, raison_du_refus). Deux modèles possibles :
+
+    - 'heures' : liste d'heures de Paris (ex. [8, 10, 12]). Un seul appel par
+      créneau horaire. C'est le mode explicite, celui qu'on utilise ici.
+    - 'cadence' : intervalle minimum variable selon l'heure (mode historique,
+      conservé comme repli si 'heures' n'est pas défini).
+    """
     dernier = led["dernier_appel"].get(provider)
+    now = _paris()
+
+    heures = sorted((override or {}).get("heures") or cfg.get("heures") or [])
+    if heures:
+        # On ne teste pas l'égalité stricte avec l'heure courante : le cron
+        # GitHub peut déraper de plusieurs minutes et faire basculer d'heure.
+        # On sert le dernier créneau échu du jour s'il ne l'a pas déjà été,
+        # ce qui rattrape un passage en retard sans jamais en rejouer sept.
+        echus = [h for h in heures if h <= now.hour]
+        suivante = next((h for h in heures if h > now.hour), None)
+        attente = f"prochain passage à {suivante}h" if suivante else "prochain passage demain"
+        if not echus:
+            return False, f"hors créneau, {attente}"
+        creneau = echus[-1]
+        if dernier is not None:
+            d = _paris(dernier)
+            if d.date() == now.date() and d.hour >= creneau:
+                return False, f"créneau de {creneau}h déjà traité, {attente}"
+        return True, ""
+
     if dernier is None:
-        return True, 0
+        return True, ""
     ecoule = time.time() - dernier
     requis = cadence_requise(cfg, override)
-    return ecoule >= requis, max(0, requis - ecoule)
+    if ecoule >= requis:
+        return True, ""
+    return False, f"prochain appel dans {(requis - ecoule) / 60:.0f} min"
 
 
 # ---------------------------------------------------------------- Scrape
@@ -154,9 +190,9 @@ def scrape(url, *, provider, cfg, log=print,
 
     # --- garde-fou 1 : cadence
     if not ignorer_cadence:
-        ok, reste = _peut_appeler(led, provider, cfg, cadence)
+        ok, raison = _peut_appeler(led, provider, cfg, cadence)
         if not ok:
-            raise TropTot(f"{provider}: prochain appel dans {reste / 60:.0f} min")
+            raise TropTot(raison)
 
     # --- garde-fou 2 : enveloppe mensuelle du projet
     enveloppe = cfg.get("budget_mensuel", 150000)

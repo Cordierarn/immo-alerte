@@ -15,7 +15,7 @@
 ## Comment ça marche
 
 ```
-GitHub Actions (toutes les 5 min)
+GitHub Actions — 8h, 10h, 12h, 13h, 15h, 18h, 20h (heure de Paris)
         │
         ├── GRATUIT ─ Bien'ici   (API JSON interne)
         │             PAP        (parsing HTML, 100% particuliers)
@@ -23,7 +23,7 @@ GitHub Actions (toutes les 5 min)
         ├── PAYANT ── Leboncoin  (Scrapfly + ASP, DataDome)
         │             SeLoger    (Scrapfly + ASP, désactivé par défaut)
         │                  ▲
-        │                  └── 3 garde-fous : cadence horaire, enveloppe
+        │                  └── 3 garde-fous : créneaux horaires, enveloppe
         │                      mensuelle, réserve de crédits du compte
         ▼
    filtres : villes, prix max, meublé, exclusion coloc/chambres
@@ -125,17 +125,21 @@ demandes déguisées en offres (« Recherche studio sur Lyon » arrive avec
 
 ### Les trois garde-fous (`scrapfly_client.py`)
 
-1. **Cadence horaire** — les annonces sortent en journée ouvrée. On scanne
-   toutes les 5 min de 9 h à 19 h en semaine, 30 min le soir et le week-end,
-   2 h la nuit. Aucune annonce utile perdue, ~60 % de crédits économisés.
+1. **Créneaux horaires** — sept passages par jour, à 8 h, 10 h, 12 h, 13 h,
+   15 h, 18 h et 20 h (heure de Paris), un seul appel par créneau. Un run
+   GitHub en retard rattrape le créneau échu au lieu de le perdre ; hors
+   créneau, le passage s'arrête avant tout appel et ne coûte rien.
 2. **Enveloppe mensuelle** — `budget.json` compte les crédits dépensés par ce
    projet ; au-delà de `budget_mensuel`, plus aucun appel.
 3. **Réserve du compte** — chaque réponse renvoie le crédit restant du compte
    (tous projets confondus). En dessous de `reserve_autre_projet`, on coupe :
    c'est ce qui garantit que la veille immo n'assèche pas l'autre projet.
 
-Projection avec la config par défaut : **~96 600 crédits/mois** pour Leboncoin
-seul (48 % du quota), ~117 700 avec SeLoger activé (59 %).
+Projection avec la config par défaut : **~6 400 crédits/mois** pour Leboncoin
+seul (3 % du quota), ~9 100 avec SeLoger activé. La marge est énorme : la
+contrainte réelle n'est plus le budget mais la **réactivité** — une annonce
+publiée à 10 h 05 n'est signalée qu'à 12 h. Ajouter des heures dans `heures`
+coûte ~915 crédits/mois par passage quotidien supplémentaire.
 
 ### Réglages
 
@@ -147,9 +151,13 @@ Tout est dans la section `scrapfly` de [`config.json`](config.json) :
 | `budget_mensuel` | Crédits max que ce projet peut consommer dans le mois |
 | `reserve_autre_projet` | Crédits du compte à ne jamais entamer |
 | `cout_max_par_requete` | `cost_budget` Scrapfly : plafond dur par appel |
-| `cadence` | Intervalle mini en secondes (`pleine` / `creuse` / `nuit`) |
+| `heures` | Heures de passage (Paris), ex. `[8, 10, 12, 13, 15, 18, 20]` |
 | `providers.*.search_url` | URL de recherche, **une seule pour toute la zone** |
-| `providers.*.cadence` | Cadence spécifique à un site (SeLoger tourne au ralenti) |
+| `providers.*.heures` | Créneaux spécifiques à un site (SeLoger : 8 h, 13 h, 18 h) |
+
+Modifier `heures` suffit : le cron GitHub couvre déjà toute la plage 8 h–20 h,
+c'est `config.json` qui décide des passages retenus. Le mode historique
+`cadence` (intervalle variable en secondes) reste accepté si `heures` est absent.
 
 ### Mise en place
 
