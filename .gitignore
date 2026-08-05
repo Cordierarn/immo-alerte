@@ -3,3 +3,5 @@ apify_test.json
 __pycache__/
 *.pyc
 topic.txt
+scrapfly_key.txt
+debug_*.html
