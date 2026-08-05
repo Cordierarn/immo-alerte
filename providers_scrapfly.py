@@ -113,8 +113,12 @@ def provider_leboncoin(cfg, sf_cfg, garder, log, dev=False):
         if prix is None or prix > cfg["prix_max"]:
             continue
 
-        # les filtres de l'URL sont déjà appliqués côté Leboncoin, mais une
-        # URL mal recopiée passerait inaperçue : on revérifie en local (gratuit)
+        # Leboncoin applique bien 'furnished' et 'rooms' de l'URL, mais IGNORE
+        # 'real_estate_type' : on reçoit des maisons (1) et des bureaux/locaux
+        # (5) au milieu des appartements. On refiltre donc en local, c'est
+        # gratuit et ça évite les notifications parasites.
+        if _attr(ad, "real_estate_type") != "2":
+            continue
         pieces = _attr(ad, "rooms")
         if pieces and cfg.get("pieces_max") and int(pieces) > cfg["pieces_max"]:
             continue

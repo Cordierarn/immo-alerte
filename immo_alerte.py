@@ -65,13 +65,31 @@ def texte_exclu(texte):
 
 
 def est_chambre(titre):
-    """Les 'chambres à louer' sont de la coloc déguisée."""
-    return (titre or "").strip().lower().startswith("chambre")
+    """Les 'chambres à louer' sont de la coloc déguisée.
+
+    On cherche le mot n'importe où dans le titre : Leboncoin est plein de
+    'Location Chambres' et de 'LES IRIS location chambres' qu'un simple
+    startswith laissait passer. Un vrai T3 'appartement 2 chambres' serait
+    écarté au passage, mais pieces_max l'exclut déjà de toute façon.
+    """
+    return bool(re.search(r"\bchambres?\b", (titre or "").lower()))
+
+
+def est_demande(titre):
+    """Leboncoin étiquette 'offer' des annonces qui sont des DEMANDES.
+
+    'Recherche studio sur Lyon', 'Recherche logement étudiant'... Le champ
+    ad_type vaut 'offer' pour toutes, seul le titre trahit. On se limite au
+    début du titre : 'recherche locataire sérieux' est bien une offre.
+    """
+    return bool(re.match(r"(je\s+)?(re)?cherche\b", (titre or "").strip().lower()))
 
 
 def garder(titre, description):
-    """Filtre commun aux providers Scrapfly (mots exclus + coloc)."""
+    """Filtre commun aux providers Scrapfly (mots exclus + coloc + demandes)."""
     if texte_exclu(titre) or texte_exclu(description):
+        return False
+    if est_demande(titre):
         return False
     if CONFIG.get("exclure_coloc") and est_chambre(titre):
         return False

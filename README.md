@@ -105,12 +105,18 @@ facturé, les scrapes échouent). Grille de coût :
 | Requête HTTP, proxy datacenter | 1 |
 | Requête HTTP, proxy résidentiel | 25 |
 | `render_js=true` (navigateur) | +5 |
-| Réponse servie par le cache | **0** |
+| Réponse servie par le cache | **1** (mesuré ; la doc annonce 0) |
 | Scrape échoué | 0 (sauf >30 % d'échecs/heure) |
 
-Un appel Leboncoin passe par l'ASP, qui bascule sur du résidentiel : compter
-**25 à 30 crédits**. Toute la configuration vise donc à faire *un seul appel
-par site et par passage*.
+Un appel Leboncoin passe par l'ASP, qui bascule sur du résidentiel : **30
+crédits** mesurés en conditions réelles. Toute la configuration vise donc à
+faire *un seul appel par site et par passage*.
+
+À noter : Leboncoin applique bien `furnished` et `rooms` depuis l'URL mais
+**ignore `real_estate_type`** — on reçoit maisons, bureaux et locaux au milieu
+des appartements. Le refiltrage se fait en local, gratuitement. Idem pour les
+demandes déguisées en offres (« Recherche studio sur Lyon » arrive avec
+`ad_type=offer`) : seul le titre les trahit.
 
 ### Les trois garde-fous (`scrapfly_client.py`)
 
