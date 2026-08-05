@@ -59,7 +59,9 @@ Tout se règle dans [`config.json`](config.json) :
 2. Ajuste `config.json` à ta recherche
 3. Crée un topic privé ntfy (un nom improbable, ex. `immo-tonprenom-a8f3e2`)
    et ajoute-le en **secret** du dépôt : *Settings → Secrets and variables →
-   Actions → New repository secret* → nom `NTFY_TOPIC`
+   Actions → New repository secret* → nom `NTFY_TOPIC`.
+   Plusieurs topics ? Sépare-les par des virgules : chaque alerte part sur
+   tous (utile pour deux téléphones, ou pour doubler un topic perdu).
 4. Installe l'app [ntfy](https://ntfy.sh) ([Android](https://play.google.com/store/apps/details?id=io.heckel.ntfy) / [iOS](https://apps.apple.com/app/ntfy/id1625396347)) et abonne-toi à ton topic
 5. Active les workflows dans l'onglet **Actions**, puis lance *Veille immo* →
    *Run workflow* une première fois
@@ -75,7 +77,10 @@ python immo_alerte.py --init   # premier passage : mémorise sans notifier
 python immo_alerte.py          # passages suivants (à planifier)
 ```
 
-En local, renseigne `ntfy_topic` dans `config.json` ou exporte `NTFY_TOPIC`.
+En local, mets un topic par ligne dans `topic.txt` (gitignoré), ou renseigne
+`ntfy_topic` dans `config.json` (chaîne ou liste), ou exporte `NTFY_TOPIC`.
+Les trois sources s'additionnent et sont dédoublonnées : une alerte part sur
+tous les topics connus, et un appui sur la notification ouvre l'annonce.
 
 ## Sources couvertes
 

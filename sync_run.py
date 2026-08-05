@@ -19,11 +19,8 @@ def git(*args):
     return subprocess.run(["git", *args], capture_output=True, text=True)
 
 
-# topic ntfy et clé Scrapfly depuis des fichiers locaux (gitignorés)
-topic_file = BASE / "topic.txt"
-if topic_file.exists():
-    os.environ["NTFY_TOPIC"] = topic_file.read_text(encoding="utf-8").strip()
-
+# topic.txt est lu directement par immo_alerte.topics_ntfy(), rien à faire ici.
+# Seule la clé Scrapfly doit passer par l'environnement.
 key_file = BASE / "scrapfly_key.txt"
 if key_file.exists():
     os.environ["SCRAPFLY_KEY"] = key_file.read_text(encoding="utf-8").strip()

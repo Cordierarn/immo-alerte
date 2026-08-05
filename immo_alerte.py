@@ -242,23 +242,48 @@ def provider_pap():
 
 # ---------------------------------------------------------------- Notification
 
+def topics_ntfy():
+    """Tous les topics destinataires, dédoublonnés en gardant l'ordre.
+
+    On additionne les sources au lieu de les faire se remplacer, pour pouvoir
+    diffuser la même alerte sur plusieurs appareils (ou plusieurs personnes) :
+      - NTFY_TOPIC : secret GitHub Actions, plusieurs topics séparés par ','
+      - config.json 'ntfy_topic' : une chaîne ou une liste
+      - topic.txt : fichier local gitignoré (une ligne par topic)
+    """
+    bruts = list((os.environ.get("NTFY_TOPIC") or "").split(","))
+
+    depuis_config = CONFIG.get("ntfy_topic") or []
+    bruts += depuis_config if isinstance(depuis_config, list) else depuis_config.split(",")
+
+    local = BASE / "topic.txt"
+    if local.exists():
+        bruts += local.read_text(encoding="utf-8").replace(",", "\n").splitlines()
+
+    vus, topics = set(), []
+    for t in bruts:
+        t = t.strip()
+        if t and t not in vus:
+            vus.add(t)
+            topics.append(t)
+    return topics
+
+
 def notifier(annonce):
     surface = f" - {annonce['surface']:.0f}m2" if annonce.get("surface") else ""
     msg = (f"{annonce['prix']}EUR{surface} - {annonce['ville']}\n"
            f"{annonce['titre']}\n{annonce['url']}")
     log(f"NOUVEAU [{annonce['source']}] {msg.replace(chr(10), ' | ')}")
-    # le topic vient d'abord de l'environnement (secret GitHub Actions),
-    # sinon du config.json (usage local)
-    topic = (os.environ.get("NTFY_TOPIC") or CONFIG.get("ntfy_topic", "")).strip()
-    if topic:
+    for topic in topics_ntfy():
         try:
             requests.post(f"https://ntfy.sh/{topic}",
                           data=msg.encode("utf-8"),
                           headers={"Title": f"Logement {annonce['prix']}EUR - {annonce['ville']}",
-                                   "Priority": "high", "Tags": "house"},
+                                   "Priority": "high", "Tags": "house",
+                                   "Click": annonce["url"]},
                           timeout=15)
         except Exception as e:
-            log(f"  ntfy KO: {e}")
+            log(f"  ntfy KO ({topic}): {e}")
 
 
 # ---------------------------------------------------------------- Main
