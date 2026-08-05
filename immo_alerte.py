@@ -5,13 +5,21 @@ immo-alerte : veille logement personnelle (Saint-Priest & alentours).
 Architecture inspirée de Fredy (providers + dédoublonnage + notifications)
 et de House-Alert (critères utilisateur, exécution périodique).
 
-Providers :
+Providers gratuits (aucun coût, à chaque passage) :
   - Bien'ici : API JSON interne (fiable, pas de protection anti-bot agressive)
   - PAP      : parsing HTML (100% particuliers, pas de frais d'agence)
+
+Providers payants via Scrapfly (DataDome, cadence et budget encadrés) :
+  - Leboncoin : ~25-30 crédits/appel, la source qui apporte vraiment du stock
+  - SeLoger   : désactivé par défaut (redondant avec Bien'ici)
 
 Usage :
   python immo_alerte.py            # un passage (à planifier toutes les 15 min)
   python immo_alerte.py --init     # premier passage : mémorise l'existant sans notifier
+  python immo_alerte.py --gratuit  # ignore les providers Scrapfly (0 crédit)
+  python immo_alerte.py --dev      # met en cache les appels Scrapfly (0 crédit
+                                   # sur les rejeux) pour mettre au point le parsing
+  python immo_alerte.py --budget   # état de la consommation de crédits du mois
 """
 
 import json
@@ -59,6 +67,15 @@ def texte_exclu(texte):
 def est_chambre(titre):
     """Les 'chambres à louer' sont de la coloc déguisée."""
     return (titre or "").strip().lower().startswith("chambre")
+
+
+def garder(titre, description):
+    """Filtre commun aux providers Scrapfly (mots exclus + coloc)."""
+    if texte_exclu(titre) or texte_exclu(description):
+        return False
+    if CONFIG.get("exclure_coloc") and est_chambre(titre):
+        return False
+    return True
 
 
 # ---------------------------------------------------------------- Bien'ici
@@ -228,8 +245,41 @@ def notifier(annonce):
 
 # ---------------------------------------------------------------- Main
 
+def providers_payants(dev):
+    """Providers Scrapfly : chaque appel coûte des crédits, donc chaque échec
+    de garde-fou (cadence, budget) est une info normale, pas une erreur."""
+    from scrapfly_client import BudgetEpuise, ScrapflyKO, TropTot
+    from providers_scrapfly import PROVIDERS_SCRAPFLY
+
+    sf_cfg = CONFIG.get("scrapfly") or {}
+    if not sf_cfg.get("enabled"):
+        return []
+
+    annonces = []
+    for name, provider in PROVIDERS_SCRAPFLY:
+        try:
+            found = provider(CONFIG, sf_cfg, garder, log, dev=dev)
+            log(f"{name}: {len(found)} annonces correspondant aux criteres")
+            annonces.extend(found)
+        except TropTot as e:
+            log(f"{name}: pas encore l'heure ({e})")
+        except BudgetEpuise as e:
+            log(f"{name}: BUDGET — {e}")
+        except ScrapflyKO as e:
+            log(f"{name}: scrape KO — {e}")
+        except Exception as e:
+            log(f"{name}: erreur provider: {e}")
+    return annonces
+
+
 def main():
+    if "--budget" in sys.argv:
+        from scrapfly_client import rapport
+        print(rapport())
+        return
+
     init_mode = "--init" in sys.argv
+    dev_mode = "--dev" in sys.argv
     seen = load_seen()
     annonces = []
     for name, provider in (("Bien'ici", provider_bienici), ("PAP", provider_pap)):
@@ -239,6 +289,9 @@ def main():
             annonces.extend(found)
         except Exception as e:
             log(f"{name}: erreur provider: {e}")
+
+    if "--gratuit" not in sys.argv:
+        annonces.extend(providers_payants(dev_mode))
 
     # dédoublonnage intra-passage (un même id peut sortir de deux sélecteurs) :
     # on garde la version avec le titre le plus riche

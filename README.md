@@ -15,11 +15,16 @@
 ## Comment ça marche
 
 ```
-GitHub Actions (toutes les 15 min)
+GitHub Actions (toutes les 5 min)
         │
-        ├── Bien'ici  (API JSON interne)
-        ├── PAP       (parsing HTML, 100% particuliers)
+        ├── GRATUIT ─ Bien'ici   (API JSON interne)
+        │             PAP        (parsing HTML, 100% particuliers)
         │
+        ├── PAYANT ── Leboncoin  (Scrapfly + ASP, DataDome)
+        │             SeLoger    (Scrapfly + ASP, désactivé par défaut)
+        │                  ▲
+        │                  └── 3 garde-fous : cadence horaire, enveloppe
+        │                      mensuelle, réserve de crédits du compte
         ▼
    filtres : villes, prix max, meublé, exclusion coloc/chambres
         │
@@ -72,17 +77,94 @@ python immo_alerte.py          # passages suivants (à planifier)
 
 En local, renseigne `ntfy_topic` dans `config.json` ou exporte `NTFY_TOPIC`.
 
-## Sources couvertes (et pourquoi pas les autres)
+## Sources couvertes
 
-| Site | Statut | Raison |
-|---|---|---|
-| Bien'ici | ✅ intégré | API JSON interne accessible |
-| PAP | ✅ intégré | HTML propre, pas de protection agressive |
-| Leboncoin | ❌ | DataDome (anti-bot) : nécessite des proxys résidentiels payants |
-| SeLoger | ❌ | idem DataDome |
+| Site | Statut | Coût | Raison |
+|---|---|---|---|
+| Bien'ici | ✅ intégré | 0 | API JSON interne accessible |
+| PAP | ✅ intégré | 0 | HTML propre, pas de protection agressive |
+| Leboncoin | ✅ Scrapfly | ~30 cr/appel | DataDome → ASP. Source la plus riche en particuliers |
+| SeLoger | ⚙️ Scrapfly, off | ~30 cr/appel | DataDome. Stock très redondant avec Bien'ici |
+| Logic-Immo | ❌ | — | Même groupe (Aviv) et même stock que SeLoger : payer deux fois |
+| Avendrealouer | ❌ | — | DataDome aussi, apport marginal sur la zone |
+| ParuVendu / Ouest-France Immo | ❌ | — | Quasi rien en location sur l'est lyonnais |
 
-Pour couvrir Leboncoin/SeLoger, le plus simple reste leurs alertes email
-natives en parallèle.
+Le raisonnement : sur une recherche T1/T2 meublé ≤ 650 € autour de Saint-Priest,
+**Leboncoin est la seule source qui apporte du stock qu'on n'a pas ailleurs**
+(bailleurs particuliers). Les portails d'agences se recopient largement entre
+eux, et Bien'ici — gratuit — en couvre déjà l'essentiel. D'où l'ordre de
+priorité : Leboncoin d'abord, le reste seulement s'il reste du budget.
+
+## Budget Scrapfly
+
+Plan Discovery : 200 000 crédits/mois, **plafond dur** (pas de dépassement
+facturé, les scrapes échouent). Grille de coût :
+
+| Élément | Crédits |
+|---|---|
+| Requête HTTP, proxy datacenter | 1 |
+| Requête HTTP, proxy résidentiel | 25 |
+| `render_js=true` (navigateur) | +5 |
+| Réponse servie par le cache | **0** |
+| Scrape échoué | 0 (sauf >30 % d'échecs/heure) |
+
+Un appel Leboncoin passe par l'ASP, qui bascule sur du résidentiel : compter
+**25 à 30 crédits**. Toute la configuration vise donc à faire *un seul appel
+par site et par passage*.
+
+### Les trois garde-fous (`scrapfly_client.py`)
+
+1. **Cadence horaire** — les annonces sortent en journée ouvrée. On scanne
+   toutes les 5 min de 9 h à 19 h en semaine, 30 min le soir et le week-end,
+   2 h la nuit. Aucune annonce utile perdue, ~60 % de crédits économisés.
+2. **Enveloppe mensuelle** — `budget.json` compte les crédits dépensés par ce
+   projet ; au-delà de `budget_mensuel`, plus aucun appel.
+3. **Réserve du compte** — chaque réponse renvoie le crédit restant du compte
+   (tous projets confondus). En dessous de `reserve_autre_projet`, on coupe :
+   c'est ce qui garantit que la veille immo n'assèche pas l'autre projet.
+
+Projection avec la config par défaut : **~96 600 crédits/mois** pour Leboncoin
+seul (48 % du quota), ~117 700 avec SeLoger activé (59 %).
+
+### Réglages
+
+Tout est dans la section `scrapfly` de [`config.json`](config.json) :
+
+| Clé | Rôle |
+|---|---|
+| `enabled` | Coupe-circuit global des providers payants |
+| `budget_mensuel` | Crédits max que ce projet peut consommer dans le mois |
+| `reserve_autre_projet` | Crédits du compte à ne jamais entamer |
+| `cout_max_par_requete` | `cost_budget` Scrapfly : plafond dur par appel |
+| `cadence` | Intervalle mini en secondes (`pleine` / `creuse` / `nuit`) |
+| `providers.*.search_url` | URL de recherche, **une seule pour toute la zone** |
+| `providers.*.cadence` | Cadence spécifique à un site (SeLoger tourne au ralenti) |
+
+### Mise en place
+
+1. Récupère ta clé API Scrapfly et crée un **projet dédié** (le plan Discovery
+   en autorise 2) : les dashboards de coût restent séparés de l'autre projet.
+2. Ajoute-la en secret du dépôt : *Settings → Secrets and variables → Actions*
+   → nom `SCRAPFLY_KEY`. En local, mets-la dans `scrapfly_key.txt` (gitignoré).
+3. **Vérifie l'URL de recherche** : ouvre `providers.leboncoin.search_url` dans
+   ton navigateur. Elle doit afficher exactement les annonces voulues, triées
+   par date, pour les six communes en une seule page. C'est cette URL unique
+   qui évite de payer six requêtes.
+4. Premier essai en mode cache (les rejeux ne coûtent rien) :
+   ```bash
+   python immo_alerte.py --dev --init
+   ```
+
+### Commandes
+
+```bash
+python immo_alerte.py --budget    # crédits consommés ce mois, par site
+python immo_alerte.py --gratuit   # passage sans aucun appel payant
+python immo_alerte.py --dev       # appels mis en cache : rejeux à 0 crédit
+```
+
+Si un parsing casse, le HTML est écrit dans `debug_<site>.html` et le mode
+`--dev` permet d'itérer dessus sans rebrûler de crédits.
 
 ## Notes
 

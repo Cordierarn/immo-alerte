@@ -19,10 +19,14 @@ def git(*args):
     return subprocess.run(["git", *args], capture_output=True, text=True)
 
 
-# topic ntfy depuis le fichier local (gitignoré)
+# topic ntfy et clé Scrapfly depuis des fichiers locaux (gitignorés)
 topic_file = BASE / "topic.txt"
 if topic_file.exists():
     os.environ["NTFY_TOPIC"] = topic_file.read_text(encoding="utf-8").strip()
+
+key_file = BASE / "scrapfly_key.txt"
+if key_file.exists():
+    os.environ["SCRAPFLY_KEY"] = key_file.read_text(encoding="utf-8").strip()
 
 # récupère la mémoire mise à jour par le cloud
 git("pull", "--rebase", "--quiet")
@@ -31,7 +35,8 @@ git("pull", "--rebase", "--quiet")
 subprocess.run([sys.executable, str(BASE / "immo_alerte.py")])
 
 # repartage la mémoire locale (PAP notamment, invisible depuis le cloud)
-git("add", "seen.json")
+# et le ledger de crédits, pour que le cloud connaisse la dépense locale
+git("add", "seen.json", "budget.json")
 if git("diff", "--cached", "--quiet").returncode != 0:
     git("commit", "--quiet", "-m", "maj: annonces vues (local)")
     if git("pull", "--rebase", "--quiet").returncode == 0:

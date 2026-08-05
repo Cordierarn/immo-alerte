@@ -2,8 +2,11 @@ name: Veille immo
 
 on:
   schedule:
-    # toutes les 15 minutes (heure UTC, parfois quelques minutes de retard côté GitHub)
-    - cron: "*/15 * * * *"
+    # toutes les 5 minutes (heure UTC, parfois quelques minutes de retard côté GitHub).
+    # Le workflow est le BATTEMENT, pas la cadence de dépense : les providers
+    # gratuits (Bien'ici, PAP) tournent à chaque passage, les providers Scrapfly
+    # sont eux gouvernés par la cadence horaire définie dans config.json.
+    - cron: "*/5 * * * *"
   workflow_dispatch: {}
 
 permissions:
@@ -31,15 +34,22 @@ jobs:
       - name: Scanner les annonces
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          SCRAPFLY_KEY: ${{ secrets.SCRAPFLY_KEY }}
         run: python immo_alerte.py
 
-      - name: Sauvegarder la mémoire des annonces vues
+      - name: Sauvegarder la mémoire des annonces vues et le budget
         run: |
           git config user.name "immo-alerte-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add seen.json
+          git add seen.json budget.json
           if ! git diff --cached --quiet; then
             git commit -m "maj: annonces vues"
-            git pull --rebase
+            # budget.json bouge à chaque appel payant : en cas de course avec
+            # le runner local, la version distante (plus avancée) fait foi.
+            git pull --rebase -X theirs || git rebase --skip
             git push
           fi
+
+      - name: Consommation de crédits Scrapfly
+        if: always()
+        run: python immo_alerte.py --budget

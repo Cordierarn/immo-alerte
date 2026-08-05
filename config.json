@@ -18,5 +18,35 @@
     "co-location",
     "chambre chez l'habitant",
     "chambre dans"
-  ]
+  ],
+
+  "scrapfly": {
+    "enabled": true,
+
+    "budget_mensuel": 165000,
+    "reserve_autre_projet": 25000,
+    "cout_max_par_requete": 35,
+
+    "cadence": {
+      "pleine": 300,
+      "creuse": 1800,
+      "nuit": 7200
+    },
+
+    "providers": {
+      "leboncoin": {
+        "enabled": true,
+        "search_url": "https://www.leboncoin.fr/recherche?category=10&real_estate_type=2&locations=Saint-Priest_69800,Bron_69500,V%C3%A9nissieux_69200,Mions_69780,Corbas_69960,Chassieu_69680&price=min-650&rooms=1-2&furnished=1&sort=time&order=desc"
+      },
+      "seloger": {
+        "enabled": false,
+        "cadence": {
+          "pleine": 1800,
+          "creuse": 3600,
+          "nuit": 21600
+        },
+        "search_url": "https://www.seloger.com/list.htm?projects=1&types=1&natures=1&places=%5B%7B%22inseeCodes%22%3A%5B690290%2C690290%5D%7D%5D&price=NaN%2F650&rooms=1%2C2&furnished=1&sort=d_dt_crea&enterprise=0"
+      }
+    }
+  }
 }
