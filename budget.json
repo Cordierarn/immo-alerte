@@ -1,14 +1,14 @@
 {
-  "appels": 718,
-  "credits": 24964,
+  "appels": 725,
+  "credits": 25219,
   "dernier_appel": {
-    "leboncoin": 1787244007.5029871,
-    "seloger": 1787244057.4939954
+    "leboncoin": 1787251473.3186727,
+    "seloger": 1787251517.935557
   },
   "mois": "2026-08",
   "par_provider": {
-    "leboncoin": 2944,
-    "seloger": 22020
+    "leboncoin": 2974,
+    "seloger": 22245
   },
-  "restant_compte": 142961
+  "restant_compte": 142781
 }
