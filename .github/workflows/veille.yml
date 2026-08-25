@@ -43,7 +43,11 @@ jobs:
         run: |
           git config user.name "immo-alerte-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add seen.json budget.json
+          # geo_cache.json : identifiants de zone Bien'ici et g-codes PAP.
+          # Le committer évite de les redemander commune par commune à
+          # chaque passage, ce qui dominait le temps d'exécution une fois la
+          # zone passée à une trentaine de communes.
+          git add seen.json budget.json geo_cache.json
           if ! git diff --cached --quiet; then
             git commit -m "maj: annonces vues"
             # budget.json bouge à chaque appel payant : en cas de course avec

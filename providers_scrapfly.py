@@ -21,6 +21,7 @@ import re
 
 from bs4 import BeautifulSoup
 
+import zone as zone_mod
 from scrapfly_client import scrape, ScrapflyKO
 
 
@@ -69,7 +70,7 @@ def _attr(ad, cle):
     return None
 
 
-def provider_leboncoin(cfg, sf_cfg, garder, log, dev=False):
+def provider_leboncoin(cfg, zone, sf_cfg, garder, log, dev=False):
     """Leboncoin — la seule source réellement irremplaçable (particuliers).
 
     DataDome : ASP obligatoire, ~25-30 crédits par appel. On n'en fait qu'un.
@@ -130,6 +131,10 @@ def provider_leboncoin(cfg, sf_cfg, garder, log, dev=False):
 
         surface = _attr(ad, "square")
         loc = ad.get("location") or {}
+        # l'URL liste une trentaine de communes ; Leboncoin élargit parfois
+        # aux alentours, et le zipcode de l'annonce fait foi
+        if not zone.accepte(ville=loc.get("city"), cp=loc.get("zipcode")):
+            continue
         results.append({
             "id": f"leboncoin-{ad.get('list_id')}",
             "titre": titre[:90],
@@ -149,7 +154,7 @@ def _slg_txt(carte, testid):
     return el.get_text(" ", strip=True) if el else ""
 
 
-def _slg_cartes(html, cfg, garder, log):
+def _slg_cartes(html, cfg, zone, garder, log):
     """Parse les cartes d'une page de résultats SeLoger.
 
     Le JSON-LD de SeLoger ne contient que des agrégats (nombre d'annonces,
@@ -192,8 +197,10 @@ def _slg_cartes(html, cfg, garder, log):
 
         mv = re.search(r"([^,]+?)\s*\((\d{5})\)", adresse)
         ville = mv.group(1).strip() if mv else adresse.split(",")[-1].strip()
-        # SeLoger propose souvent des communes « aux alentours »
-        if not any(v.lower() in adresse.lower() for v in cfg["villes"]):
+        # SeLoger propose souvent des communes « aux alentours ». L'adresse
+        # porte le code postal (« Lyon 8ème (69008) ») : il tranche seul, et
+        # c'est le seul moyen fiable de distinguer les arrondissements.
+        if not zone.accepte(ville=ville, adresse=adresse):
             continue
 
         lien = ""
@@ -216,7 +223,7 @@ def _slg_cartes(html, cfg, garder, log):
     return results, len(cartes)
 
 
-def provider_seloger(cfg, sf_cfg, garder, log, dev=False):
+def provider_seloger(cfg, zone, sf_cfg, garder, log, dev=False):
     """SeLoger — une requête PAR COMMUNE.
 
     SeLoger a abandonné list.htm : le nouveau schéma d'URL n'accepte qu'une
@@ -248,14 +255,228 @@ def provider_seloger(cfg, sf_cfg, garder, log, dev=False):
                      cost_budget=p.get("cout_max"),
                      cache=dev, cache_ttl=3600,
                      ignorer_cadence=dev or i > 0)
-        trouves, nb_cartes = _slg_cartes(res["content"], cfg, garder, log)
+        trouves, nb_cartes = _slg_cartes(res["content"], cfg, zone, garder, log)
         if not nb_cartes:
             _dump_debug(f"seloger{i}", res["content"], log)
         results.extend(trouves)
     return results
 
 
+# ---------------------------------------------------------------- Logic-Immo
+
+def _li_annonces(html, cfg, zone, garder):
+    """Extrait les annonces Logic-Immo.
+
+    Contrairement à Leboncoin et SeLoger, la structure de cette page n'a
+    jamais pu être observée : le site est derrière DataDome, qui renvoie 403
+    à toute requête directe, y compris sur une URL volontairement invalide.
+    Impossible donc de valider un sélecteur sans dépenser des crédits.
+
+    On lit par conséquent le JSON-LD, qui est la partie la plus stable et la
+    plus standardisée d'un portail immobilier, avec un repli sur les cartes
+    HTML. Si les deux échouent, le HTML est sauvegardé pour ajuster le
+    parsing hors ligne, sans rebrûler d'appel.
+    """
+    results = []
+
+    def ajouter(titre, desc, prix, surface, ville, cp, lien):
+        if not lien or prix is None or prix > cfg["prix_max"]:
+            return
+        if not garder(titre, desc) or not zone.accepte(ville=ville, cp=cp, adresse=ville):
+            return
+        ident = re.search(r"(\d{6,})", lien)
+        results.append({
+            "id": f"logicimmo-{ident.group(1) if ident else lien}",
+            "titre": (titre or "Annonce Logic-Immo")[:90],
+            "prix": int(prix),
+            "surface": float(surface) if surface else None,
+            "ville": ville or "",
+            "url": lien if lien.startswith("http") else "https://www.logic-immo.com" + lien,
+            "source": "Logic-Immo",
+        })
+
+    def parcourir(noeud):
+        """Le JSON-LD immobilier imbrique Offer, ItemList et Accommodation
+        de façon très variable selon les portails : on descend partout."""
+        if isinstance(noeud, list):
+            for x in noeud:
+                parcourir(x)
+            return
+        if not isinstance(noeud, dict):
+            return
+        offre = noeud.get("offers") or {}
+        offre = offre[0] if isinstance(offre, list) and offre else offre
+        prix = (noeud.get("price") or (offre or {}).get("price")
+                if isinstance(offre, dict) else noeud.get("price"))
+        lien = noeud.get("url") or (offre or {}).get("url") if isinstance(offre, dict) else noeud.get("url")
+        adr = noeud.get("address") or {}
+        if isinstance(adr, dict):
+            ville, cp = adr.get("addressLocality"), adr.get("postalCode")
+        else:
+            ville, cp = (adr if isinstance(adr, str) else None), None
+        taille = noeud.get("floorSize") or {}
+        surface = taille.get("value") if isinstance(taille, dict) else taille
+        if prix and lien:
+            try:
+                ajouter(noeud.get("name"), noeud.get("description"),
+                        float(str(prix).replace(",", ".")), surface, ville, cp, str(lien))
+            except (TypeError, ValueError):
+                pass
+        for v in noeud.values():
+            parcourir(v)
+
+    for bloc in _jsonld(html):
+        parcourir(bloc)
+    if results:
+        return results
+
+    # repli : toute ancre qui porte à la fois un loyer et une surface
+    soup = BeautifulSoup(html, "html.parser")
+    for a in soup.select("a[href]"):
+        txt = a.get_text(" ", strip=True)
+        mp = re.search(r"(\d[\d\s ]{1,6})\s*€", txt)
+        ms = re.search(r"(\d+(?:[.,]\d+)?)\s*m", txt)
+        if not (mp and ms):
+            continue
+        ajouter(txt, txt, int(re.sub(r"\D", "", mp.group(1))),
+                ms.group(1).replace(",", "."), txt, None, a["href"])
+    return results
+
+
+def provider_logicimmo(cfg, zone, sf_cfg, garder, log, dev=False):
+    """Logic-Immo — une seule requête pour toute la zone.
+
+    Le site accepte une recherche large, là où SeLoger impose une URL par
+    commune : à couverture égale il coûte donc ~8 fois moins cher, ce qui
+    est la raison de sa présence ici.
+    """
+    p = (sf_cfg.get("providers") or {}).get("logicimmo") or {}
+    if not p.get("enabled"):
+        return []
+    urls = p.get("search_url")
+    urls = [urls] if isinstance(urls, str) else list(urls or [])
+    if not urls:
+        log("  Logic-Immo: 'search_url' absente de config.json, provider ignoré")
+        return []
+
+    results = []
+    for i, url in enumerate(urls):
+        res = scrape(url, provider="logicimmo", cfg=sf_cfg, log=log,
+                     asp=True, render_js=False, country="fr",
+                     cadence=p.get("cadence"), cost_budget=p.get("cout_max"),
+                     cache=dev, cache_ttl=3600,
+                     ignorer_cadence=dev or i > 0)
+        trouves = _li_annonces(res["content"], cfg, zone, garder)
+        if not trouves:
+            _dump_debug(f"logicimmo{i}", res["content"], log)
+        results.extend(trouves)
+    return results
+
+
+# ---------------------------------------------------------------- PAP
+
+def _pap_annonces(html, cfg, zone, garder, log):
+    """Extrait les annonces d'une page de résultats PAP.
+
+    Les cartes sont des `div.search-list-item-alt`, dont le lien de titre
+    porte déjà prix, commune, nombre de pièces et surface. On part de la
+    carte et non de l'ancre : deux ancres pointent vers la même annonce
+    (photo et titre), et dédoublonner sur l'identifiant est plus sûr que de
+    deviner laquelle porte le texte.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    cartes = soup.select("div.search-list-item-alt")
+    results, vus = [], set()
+    for c in cartes:
+        a = c.select_one("a[href*='/annonces/']")
+        if not a:
+            continue
+        href = a.get("href", "")
+        m = re.search(r"r(\d+)$", href)
+        ident = m.group(1) if m else href
+        if ident in vus:
+            continue
+        vus.add(ident)
+
+        texte = c.get_text(" ", strip=True)
+        titre = (c.select_one("a.item-title") or a).get_text(" ", strip=True)
+        if not garder(titre, texte):
+            continue
+        if not zone.accepte(adresse=texte):
+            continue
+        if cfg.get("meuble") and "meubl" not in texte.lower():
+            continue
+
+        mp = re.search(r"(\d[\d\s .]*)\s*€", texte)
+        if not mp:
+            continue
+        prix = int(re.sub(r"[^\d]", "", mp.group(1)))
+        if prix > cfg["prix_max"]:
+            continue
+        mpi = re.search(r"(\d+)\s*pièces?", texte)
+        if mpi and cfg.get("pieces_max") and int(mpi.group(1)) > cfg["pieces_max"]:
+            continue
+        ms = re.search(r"(\d+(?:[.,]\d+)?)\s*m", texte)
+        surface = float(ms.group(1).replace(",", ".")) if ms else None
+
+        mcp = zone_mod.CP_RE.search(texte)
+        exacte = zone.par_cp(mcp.group(1)) if mcp else None
+        results.append({
+            "id": f"pap-{ident}",
+            "titre": titre[:90],
+            "prix": prix,
+            "surface": surface,
+            "ville": exacte.nom if exacte else "",
+            "url": href if href.startswith("http") else "https://www.pap.fr" + href,
+            "source": "PAP",
+        })
+    return results, len(cartes)
+
+
+def provider_pap(cfg, zone, sf_cfg, garder, log, dev=False):
+    """PAP — 100 % particuliers, donc aucun frais d'agence.
+
+    Gratuit jusqu'à son passage derrière Cloudflare, qui renvoie désormais
+    403 sur les pages comme sur l'autocomplete. Le provider a continué à
+    tourner des semaines en annonçant « 0 annonce » sans rien signaler.
+
+    Deux enseignements de la remise en service, qui expliquent la forme
+    actuelle :
+
+      - les g-codes codés en dur ne correspondaient plus aux communes
+        attendues (`g35406`, censé être Bron, sert Charentay). On ne résout
+        donc plus de code par commune : on interroge le **département**,
+        `g433`, et le filtrage par code postal de zone.py fait le tri.
+      - cette page départementale coûte 40 crédits contre 80 pour une page
+        de commune, tout en couvrant les 33 communes d'un coup. Le stock de
+        PAP sous 650 € tient largement sur une page.
+    """
+    p = (sf_cfg.get("providers") or {}).get("pap") or {}
+    if not p.get("enabled"):
+        return []
+    urls = p.get("search_url")
+    urls = [urls] if isinstance(urls, str) else list(urls or [])
+    if not urls:
+        log("  PAP: 'search_url' absente de config.json, provider ignoré")
+        return []
+
+    results = []
+    for i, url in enumerate(urls):
+        res = scrape(url, provider="pap", cfg=sf_cfg, log=log,
+                     asp=True, render_js=False, country="fr",
+                     cadence=p.get("cadence"), cost_budget=p.get("cout_max"),
+                     cache=dev, cache_ttl=3600,
+                     ignorer_cadence=dev or i > 0)
+        trouves, nb = _pap_annonces(res["content"], cfg, zone, garder, log)
+        if not nb:
+            _dump_debug(f"pap{i}", res["content"], log)
+        results.extend(trouves)
+    return results
+
+
 PROVIDERS_SCRAPFLY = (
     ("Leboncoin", provider_leboncoin),
+    ("PAP", provider_pap),
     ("SeLoger", provider_seloger),
+    ("Logic-Immo", provider_logicimmo),
 )

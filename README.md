@@ -18,10 +18,12 @@
 GitHub Actions — 8h, 10h, 12h, 13h, 15h, 18h, 20h (heure de Paris)
         │
         ├── GRATUIT ─ Bien'ici   (API JSON interne)
-        │             PAP        (parsing HTML, 100% particuliers)
+        │             Immojeune  (meublé étudiant / jeune actif)
+        │             ParuVendu  (particuliers)
         │
         ├── PAYANT ── Leboncoin  (Scrapfly + ASP, DataDome)
-        │             SeLoger    (Scrapfly + ASP, désactivé par défaut)
+        │             PAP        (Scrapfly + ASP, Cloudflare)
+        │             SeLoger    (Scrapfly + ASP, communes prioritaires)
         │                  ▲
         │                  └── 3 garde-fous : créneaux horaires, enveloppe
         │                      mensuelle, réserve de crédits du compte
@@ -46,12 +48,56 @@ Tout se règle dans [`config.json`](config.json) :
 
 | Clé | Rôle |
 |---|---|
-| `villes` | Liste des communes surveillées |
+| `villes` | Zone surveillée : une entrée par commune (voir ci-dessous) |
 | `prix_max` | Loyer maximum (charges comprises selon les annonces) |
 | `meuble` | `true` = meublés uniquement |
 | `exclure_coloc` | Écarte colocations et chambres chez l'habitant |
 | `pieces_max` | Nombre de pièces maximum (T1/T2 = `2`) |
-| `mots_exclus` | Mots-clés qui disqualifient une annonce |
+| `mots_exclus` | Mots-clés qui disqualifient une annonce (titre **et** description) |
+| `mots_exclus_titre` | Mots qui ne disqualifient que dans le **titre** |
+
+Le second existe à cause d'un faux positif coûteux : « bureau » sert à écarter
+les locaux professionnels, mais dans une recherche de **meublés** il désigne
+presque toujours un meuble — « lit, armoire, table, bureau ». Le chercher dans
+les descriptions écartait en silence de bonnes annonces sur tous les providers
+à la fois. Il est donc désormais limité au titre.
+
+### La zone (`villes` + `zone.py`)
+
+La zone couvre **33 communes à moins de 45 min en transports en commun** du
+Parc Technologique de Saint-Priest (terminus du T2), Lyon 1er à 9e inclus.
+
+Chaque entrée porte son ou ses codes postaux :
+
+```json
+{ "nom": "Lyon 8e", "cp": ["69008"], "prioritaire": true, "requete": "Lyon" }
+```
+
+| Clé | Rôle |
+|---|---|
+| `cp` | Codes postaux de la commune : **c'est la clé de rattachement** |
+| `prioritaire` | Commune assez centrale pour justifier un appel SeLoger payant |
+| `requete` | Nom à envoyer aux sites quand il diffère du nom affiché |
+| `alias` | Autres noms acceptés (communes fusionnées) |
+| `cp_only` | Reconnue au code postal seulement, jamais au nom |
+
+Pourquoi un module dédié plutôt qu'une liste de noms : le test historique
+`"Lyon 8e" in adresse` échouait sur trois des quatre écritures rencontrées
+(`Lyon 8ème`, `Lyon 08`, `Lyon`). Le code postal est non ambigu et présent
+presque partout, il est donc devenu la clé primaire ; le nom n'est qu'un repli
+quand aucun code postal n'est disponible. Dès qu'un code postal est lisible, il
+tranche seul — y compris pour **refuser**, ce qui écarte les communes « aux
+alentours » que SeLoger, ParuVendu et Immojeune glissent dans leurs résultats.
+
+Aucun portail ne connaît « Lyon 8e ». D'où `requete` : les neuf arrondissements
+se replient sur une seule recherche « Lyon », et le filtrage par code postal
+retient ensuite les bons. ParuVendu fait exception, il accepte le code postal
+directement (`lyon-69008`).
+
+`geo_cache.json` mémorise les identifiants de zone Bien'ici. Ils ne changent
+jamais, et les redemander commune par commune dominait le temps d'exécution.
+Seuls les succès sont mis en cache : figer un échec condamnerait la commune
+pour toujours. Le fichier est commité par le workflow.
 
 ## Installation (fork)
 
@@ -87,18 +133,65 @@ tous les topics connus, et un appui sur la notification ouvre l'annonce.
 | Site | Statut | Coût | Raison |
 |---|---|---|---|
 | Bien'ici | ✅ intégré | 0 | API JSON interne accessible |
-| PAP | ✅ intégré | 0 | HTML propre, pas de protection agressive |
+| Immojeune | ✅ intégré | 0 | Meublé étudiant / jeune actif : exactement le segment visé |
+| ParuVendu | ✅ intégré | 0 | Beaucoup de particuliers, HTML servi tel quel |
 | Leboncoin | ✅ Scrapfly | 30 cr/appel | DataDome → ASP. Source la plus riche en particuliers |
-| SeLoger | ✅ Scrapfly | 35 cr × 6 communes | DataDome. Une URL par commune (voir plus bas) |
-| Logic-Immo | ❌ | — | Même groupe (Aviv) et même stock que SeLoger : payer deux fois |
+| PAP | ✅ Scrapfly | 40-80 cr/appel | Cloudflare. **Une seule requête départementale** (voir plus bas) |
+| SeLoger | ✅ Scrapfly | 35 cr × 7 URL | DataDome. Une URL par commune + une pour Lyon entier |
+| Logic-Immo | ❌ | — | Tourne sur la plateforme SeLoger : même stock, payé deux fois |
 | Avendrealouer | ❌ | — | DataDome aussi, apport marginal sur la zone |
-| ParuVendu / Ouest-France Immo | ❌ | — | Quasi rien en location sur l'est lyonnais |
+| Studapart / Lokaviz | ❌ | — | Connexion obligatoire avant toute recherche |
 
-Le raisonnement : sur une recherche T1/T2 meublé ≤ 650 € autour de Saint-Priest,
-**Leboncoin est la seule source qui apporte du stock qu'on n'a pas ailleurs**
-(bailleurs particuliers). Les portails d'agences se recopient largement entre
-eux, et Bien'ici — gratuit — en couvre déjà l'essentiel. D'où l'ordre de
-priorité : Leboncoin d'abord, le reste seulement s'il reste du budget.
+Le raisonnement : sur une recherche T1/T2 meublé ≤ 650 €, **Leboncoin reste la
+seule source payante qui apporte du stock qu'on n'a pas ailleurs** (bailleurs
+particuliers). Les portails d'agences se recopient largement entre eux, et
+Bien'ici — gratuit — en couvre déjà l'essentiel. Immojeune et ParuVendu ont été
+ajoutés parce qu'ils sont gratuits et couvrent deux angles morts : le meublé
+étudiant d'un côté, les particuliers hors Leboncoin de l'autre.
+
+Deux points mesurés qui contredisent des choix antérieurs :
+
+- **ParuVendu n'est pas vide** sur l'est lyonnais (23 annonces retenues lors
+  d'un passage de contrôle). L'évaluation précédente portait sur une URL de
+  recherche invalide, qui renvoyait une page sans résultats.
+- **PAP était muet, pas vide.** Le site répond `403` derrière un challenge
+  Cloudflare, et le code avalait ce refus sans rien journaliser : le provider
+  annonçait « 0 annonce » comme si la zone n'avait rien à offrir. Il est
+  désormais passé sous Scrapfly, et tout refus est journalisé.
+
+### Le cas Logic-Immo
+
+Écarté après mesure, et non par principe. Deux appels réels ont montré que la
+page d'accueil de Logic-Immo sert le composant de recherche **de SeLoger**
+(`data-testid="refiner-form-test-id"`, classes `css-*`) et mentionne 32 fois
+« seloger » : les deux sites appartiennent au groupe Aviv et partagent
+désormais la même plateforme, donc le même stock. L'intégrer reviendrait à
+payer deux fois les mêmes annonces.
+
+S'y ajoute un obstacle technique : `/location-immobilier.php` redirige vers
+`/?tab=rent`, une application monopage dont les résultats sont rendus côté
+navigateur. Les récupérer imposerait `render_js` (+5 crédits) *et* une
+rétro-ingénierie du schéma d'URL de recherche.
+
+Le code du provider reste en place (`provider_logicimmo`) avec
+`enabled: false`, au cas où les deux sites divergeraient à nouveau.
+
+### Le cas PAP
+
+PAP est passé derrière Cloudflare, qui répond `403` aux pages **comme à
+l'autocomplete**. Le provider est donc devenu payant. Sa remise en service a
+mis au jour deux choses :
+
+- **Les g-codes codés en dur ne valaient plus rien.** `g35406`, commenté
+  « Bron », sert en réalité les annonces de *Charentay* (69220), un village à
+  40 km. PAP interrogeait donc les mauvaises communes bien avant le blocage.
+- **La page départementale coûte moitié moins que la page communale** (40
+  crédits contre 80) tout en couvrant les 33 communes d'un coup. Le stock de
+  PAP sous 650 € tient largement sur une page.
+
+D'où la forme actuelle : une seule URL, `g433` (Rhône), et c'est le filtrage
+par code postal de `zone.py` qui fait le tri. Le coût observé varie de 40 à 80
+crédits selon la difficulté du challenge, d'où un `cout_max` à 90.
 
 ## Budget Scrapfly
 
@@ -135,12 +228,22 @@ demandes déguisées en offres (« Recherche studio sur Lyon » arrive avec
    (tous projets confondus). En dessous de `reserve_autre_projet`, on coupe :
    c'est ce qui garantit que la veille immo n'assèche pas l'autre projet.
 
-Projection mesurée : **~6 400 crédits/mois** pour Leboncoin (7 passages/jour,
-30 cr) et **~19 200** pour SeLoger (3 passages/jour × 6 communes × 35 cr), soit
-**~25 600 au total, 13 % du quota**. La contrainte n'est plus le budget mais la
-**réactivité** : une annonce publiée à 10 h 05 n'est signalée qu'à 12 h.
-Ajouter une heure dans `heures` coûte ~915 crédits/mois côté Leboncoin,
-~6 400 côté SeLoger.
+Projection : **~6 300 crédits/mois** pour Leboncoin (7 passages/jour, 30 cr),
+**~22 050** pour SeLoger (3 passages/jour × 7 URL × 35 cr) et **~5 400** pour
+PAP (3 passages/jour, ~60 cr en moyenne), soit **~33 750 au total, 20 % du
+quota**.
+
+L'élargissement de la zone à 33 communes n'a coûté que ~6 000 crédits/mois,
+parce que le surcoût est concentré sur SeLoger, seul provider facturé à la
+commune. Leboncoin fait tenir les 32 communes dans **une seule URL**, et les
+trois providers gratuits couvrent la zone entière sans rien dépenser. C'est la
+raison pour laquelle SeLoger est limité aux communes `prioritaire` : le passer
+sur les 33 communes coûterait ~104 000 crédits/mois, soit les deux tiers du
+quota pour un stock largement redondant avec Bien'ici.
+
+La contrainte n'est donc toujours pas le budget mais la **réactivité** : une
+annonce publiée à 10 h 05 n'est signalée qu'à 12 h. Ajouter une heure dans
+`heures` coûte ~915 crédits/mois côté Leboncoin, ~8 500 côté SeLoger.
 
 ### Le cas SeLoger
 
@@ -153,9 +256,18 @@ Son JSON-LD ne contient que des agrégats (nombre d'annonces, fourchette de
 prix). Les données sont donc lues dans les cartes HTML, via les attributs
 `data-testid` — nettement plus stables que les classes CSS générées.
 
-Rendement observé : 4 annonces exploitables sur les 6 communes, contre ~20 pour
-Leboncoin. Beaucoup de colocations sous 650 € et un stock qui recoupe Bien'ici,
-déjà gratuit. Si le budget devenait un sujet, c'est le premier à désactiver.
+Rendement observé : 4 annonces exploitables sur les 6 communes d'origine, contre
+~20 pour Leboncoin. Beaucoup de colocations sous 650 € et un stock qui recoupe
+Bien'ici, déjà gratuit. Si le budget devenait un sujet, c'est le premier à
+désactiver.
+
+C'est ce faible rendement, combiné à la facturation à la commune, qui justifie
+de le restreindre aux communes `prioritaire` plutôt que de l'étendre à toute la
+zone. Les deux URL d'arrondissement (`lyon-8eme-69008`, `lyon-3eme-69003`)
+**n'ont pas pu être vérifiées** : DataDome bloquant tout accès direct, un slug
+invalide ne se distingue pas d'un slug correct avant le premier appel réel. Si
+elles sont fausses, le premier passage écrira `debug_seloger6.html` /
+`debug_seloger7.html` et il suffira de corriger `search_url`.
 
 ### Réglages
 

@@ -1,11 +1,227 @@
 {
   "villes": [
-    "Saint-Priest",
-    "Bron",
-    "Vénissieux",
-    "Mions",
-    "Corbas",
-    "Chassieu"
+    {
+      "nom": "Saint-Priest",
+      "cp": [
+        "69800"
+      ],
+      "prioritaire": true
+    },
+    {
+      "nom": "Bron",
+      "cp": [
+        "69500"
+      ],
+      "prioritaire": true
+    },
+    {
+      "nom": "Vénissieux",
+      "cp": [
+        "69200"
+      ],
+      "prioritaire": true
+    },
+    {
+      "nom": "Chassieu",
+      "cp": [
+        "69680"
+      ],
+      "prioritaire": true
+    },
+    {
+      "nom": "Mions",
+      "cp": [
+        "69780"
+      ],
+      "prioritaire": true
+    },
+    {
+      "nom": "Corbas",
+      "cp": [
+        "69960"
+      ],
+      "prioritaire": true
+    },
+    {
+      "nom": "Lyon 8e",
+      "cp": [
+        "69008"
+      ],
+      "prioritaire": true,
+      "requete": "Lyon"
+    },
+    {
+      "nom": "Lyon 3e",
+      "cp": [
+        "69003"
+      ],
+      "prioritaire": true,
+      "requete": "Lyon"
+    },
+    {
+      "nom": "Lyon 7e",
+      "cp": [
+        "69007"
+      ],
+      "requete": "Lyon"
+    },
+    {
+      "nom": "Lyon 6e",
+      "cp": [
+        "69006"
+      ],
+      "requete": "Lyon"
+    },
+    {
+      "nom": "Lyon 2e",
+      "cp": [
+        "69002"
+      ],
+      "requete": "Lyon"
+    },
+    {
+      "nom": "Lyon 1er",
+      "cp": [
+        "69001"
+      ],
+      "requete": "Lyon"
+    },
+    {
+      "nom": "Lyon 4e",
+      "cp": [
+        "69004"
+      ],
+      "requete": "Lyon"
+    },
+    {
+      "nom": "Lyon 5e",
+      "cp": [
+        "69005"
+      ],
+      "requete": "Lyon"
+    },
+    {
+      "nom": "Lyon 9e",
+      "cp": [
+        "69009"
+      ],
+      "requete": "Lyon"
+    },
+    {
+      "nom": "Villeurbanne",
+      "cp": [
+        "69100"
+      ]
+    },
+    {
+      "nom": "Saint-Fons",
+      "cp": [
+        "69190"
+      ]
+    },
+    {
+      "nom": "Feyzin",
+      "cp": [
+        "69320"
+      ]
+    },
+    {
+      "nom": "Vaulx-en-Velin",
+      "cp": [
+        "69120"
+      ]
+    },
+    {
+      "nom": "Décines-Charpieu",
+      "cp": [
+        "69150"
+      ]
+    },
+    {
+      "nom": "Meyzieu",
+      "cp": [
+        "69330"
+      ]
+    },
+    {
+      "nom": "Genas",
+      "cp": [
+        "69740"
+      ]
+    },
+    {
+      "nom": "Oullins",
+      "cp": [
+        "69600"
+      ]
+    },
+    {
+      "nom": "Pierre-Bénite",
+      "cp": [
+        "69310"
+      ]
+    },
+    {
+      "nom": "Saint-Genis-Laval",
+      "cp": [
+        "69230"
+      ]
+    },
+    {
+      "nom": "Caluire-et-Cuire",
+      "cp": [
+        "69300"
+      ]
+    },
+    {
+      "nom": "Saint-Bonnet-de-Mure",
+      "cp": [
+        "69720"
+      ]
+    },
+    {
+      "nom": "Saint-Laurent-de-Mure",
+      "cp": [
+        "69720"
+      ]
+    },
+    {
+      "nom": "Toussieu",
+      "cp": [
+        "69780"
+      ]
+    },
+    {
+      "nom": "Saint-Pierre-de-Chandieu",
+      "cp": [
+        "69780"
+      ]
+    },
+    {
+      "nom": "Jonage",
+      "cp": [
+        "69330"
+      ]
+    },
+    {
+      "nom": "Pusignan",
+      "cp": [
+        "69330"
+      ]
+    },
+    {
+      "nom": "Chaponnay",
+      "cp": [
+        "69970"
+      ]
+    },
+    {
+      "nom": "Lyon",
+      "cp": [
+        "69000"
+      ],
+      "cp_only": true
+    }
   ],
   "prix_max": 650,
   "meuble": true,
@@ -19,37 +235,84 @@
     "chambre chez l'habitant",
     "chambre dans",
     "chez l'habitant",
-    "bureau",
     "local commercial"
   ],
-
   "scrapfly": {
     "enabled": true,
-
     "budget_mensuel": 165000,
     "reserve_autre_projet": 25000,
     "cout_max_par_requete": 35,
-
-    "heures": [8, 10, 12, 13, 15, 18, 20],
-
+    "heures": [
+      8,
+      10,
+      12,
+      13,
+      15,
+      18,
+      20
+    ],
     "providers": {
       "leboncoin": {
         "enabled": true,
-        "search_url": "https://www.leboncoin.fr/recherche?category=10&real_estate_type=2&locations=Saint-Priest_69800,Bron_69500,V%C3%A9nissieux_69200,Mions_69780,Corbas_69960,Chassieu_69680&price=min-650&rooms=1-2&furnished=1&sort=time&order=desc"
+        "search_url": "https://www.leboncoin.fr/recherche?category=10&real_estate_type=2&locations=Saint-Priest_69800,Bron_69500,V%C3%A9nissieux_69200,Chassieu_69680,Mions_69780,Corbas_69960,Lyon_69008,Lyon_69003,Lyon_69007,Lyon_69006,Lyon_69002,Lyon_69001,Lyon_69004,Lyon_69005,Lyon_69009,Villeurbanne_69100,Saint-Fons_69190,Feyzin_69320,Vaulx-en-Velin_69120,D%C3%A9cines-Charpieu_69150,Meyzieu_69330,Genas_69740,Oullins-Pierre-B%C3%A9nite_69600,Saint-Genis-Laval_69230,Caluire-et-Cuire_69300,Saint-Bonnet-de-Mure_69720,Saint-Laurent-de-Mure_69720,Toussieu_69780,Saint-Pierre-de-Chandieu_69780,Jonage_69330,Pusignan_69330,Chaponnay_69970&price=min-650&rooms=1-2&furnished=1&sort=time&order=desc"
       },
       "seloger": {
         "enabled": true,
-        "heures": [8, 13, 18],
+        "heures": [
+          8,
+          13,
+          18
+        ],
         "cout_max": 45,
         "search_url": [
           "https://www.seloger.com/immobilier/locations/immo-saint-priest-69/bien-appartement/",
           "https://www.seloger.com/immobilier/locations/immo-bron-69/bien-appartement/",
           "https://www.seloger.com/immobilier/locations/immo-venissieux-69/bien-appartement/",
+          "https://www.seloger.com/immobilier/locations/immo-chassieu-69/bien-appartement/",
           "https://www.seloger.com/immobilier/locations/immo-mions-69/bien-appartement/",
           "https://www.seloger.com/immobilier/locations/immo-corbas-69/bien-appartement/",
-          "https://www.seloger.com/immobilier/locations/immo-chassieu-69/bien-appartement/"
+          "https://www.seloger.com/immobilier/locations/immo-lyon-69/bien-appartement/"
+        ]
+      },
+      "logicimmo": {
+        "enabled": false,
+        "heures": [
+          8,
+          13,
+          18
+        ],
+        "cout_max": 45,
+        "_note": "Slug d'URL non validable hors Scrapfly (DataDome renvoie 403 sur tout). Passer enabled=true pour une exécution de validation : en cas d'échec de parsing, debug_logicimmo.html est écrit.",
+        "search_url": "https://www.logic-immo.com/location-immobilier-lyon-8eme-69008,100_1/options/groupprptypesids=1,2/pricemax=650/searchoptions=furnished"
+      },
+      "pap": {
+        "enabled": true,
+        "heures": [
+          8,
+          13,
+          18
+        ],
+        "cout_max": 90,
+        "search_url": [
+          "https://www.pap.fr/annonce/locations-appartement-rhone-69-g433-jusqu-a-650-euros"
         ]
       }
     }
-  }
+  },
+  "gratuits": {
+    "immojeune": {
+      "enabled": true,
+      "pages_max": 3
+    },
+    "paruvendu": {
+      "enabled": true
+    }
+  },
+  "mots_exclus_titre": [
+    "bureau",
+    "local commercial",
+    "entrepot",
+    "parking",
+    "garage"
+  ]
 }

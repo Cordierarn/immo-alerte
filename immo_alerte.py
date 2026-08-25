@@ -6,12 +6,16 @@ Architecture inspirée de Fredy (providers + dédoublonnage + notifications)
 et de House-Alert (critères utilisateur, exécution périodique).
 
 Providers gratuits (aucun coût, à chaque passage) :
-  - Bien'ici : API JSON interne (fiable, pas de protection anti-bot agressive)
-  - PAP      : parsing HTML (100% particuliers, pas de frais d'agence)
+  - Bien'ici   : API JSON interne (pas de protection anti-bot agressive)
+  - Immojeune  : meublé étudiant / jeune actif
+  - ParuVendu  : beaucoup de particuliers
 
-Providers payants via Scrapfly (DataDome, cadence et budget encadrés) :
-  - Leboncoin : ~25-30 crédits/appel, la source qui apporte vraiment du stock
-  - SeLoger   : désactivé par défaut (redondant avec Bien'ici)
+Providers payants via Scrapfly (anti-bot, cadence et budget encadrés) :
+  - Leboncoin  : ~30 crédits/appel, la source qui apporte vraiment du stock
+  - PAP        : 100% particuliers ; passé sous Scrapfly depuis que
+                 Cloudflare bloque l'accès direct (une requête départementale)
+  - SeLoger    : 35 crédits par commune, limité aux communes prioritaires
+  - Logic-Immo : une requête pour toute la zone
 
 Usage :
   python immo_alerte.py            # un passage (à planifier toutes les 15 min)
@@ -27,15 +31,18 @@ import os
 import re
 import sys
 import time
-import unicodedata
 from datetime import datetime
 from pathlib import Path
 
 import requests
 from bs4 import BeautifulSoup
 
+import providers_gratuits
+import zone as zone_mod
+
 BASE = Path(__file__).parent
 CONFIG = json.loads((BASE / "config.json").read_text(encoding="utf-8"))
+ZONE = zone_mod.charger(CONFIG)
 SEEN_FILE = BASE / "seen.json"
 LOG_FILE = BASE / "alertes.log"
 
@@ -63,6 +70,19 @@ def save_seen(seen):
 def texte_exclu(texte):
     t = (texte or "").lower()
     return any(m in t for m in CONFIG["mots_exclus"])
+
+
+def titre_exclu(titre):
+    """Mots qui ne disqualifient une annonce que dans son TITRE.
+
+    « bureau » désigne un local professionnel quand il titre l'annonce, mais
+    un simple meuble dès qu'il apparaît dans la description — et sur une
+    recherche de meublés, « lit, armoire, table, bureau » est la norme. Le
+    chercher partout écartait donc en silence une bonne part du stock visé,
+    sur tous les providers à la fois.
+    """
+    t = (titre or "").lower()
+    return any(m in t for m in CONFIG.get("mots_exclus_titre") or [])
 
 
 def est_chambre(titre):
@@ -93,7 +113,8 @@ def est_demande(titre):
 
 # Qui gagne quand la même annonce sort de plusieurs sites : on garde la
 # source la plus utile (particuliers d'abord, lien direct, pas de frais).
-ORDRE_SOURCES = {"Leboncoin": 0, "PAP": 1, "Bien'ici": 2, "SeLoger": 3}
+ORDRE_SOURCES = {"Leboncoin": 0, "PAP": 1, "ParuVendu": 2, "Immojeune": 3,
+                 "Bien'ici": 4, "SeLoger": 5, "Logic-Immo": 6}
 
 
 def empreinte(annonce):
@@ -107,9 +128,11 @@ def empreinte(annonce):
     prix, surface, ville = annonce.get("prix"), annonce.get("surface"), annonce.get("ville")
     if not prix or not surface or not ville:
         return None
-    plat = unicodedata.normalize("NFKD", ville.lower())
-    plat = re.sub(r"[^a-z]", "", plat.encode("ascii", "ignore").decode())
-    return f"emp:{plat}|{prix}|{round(surface)}"
+    # même normalisation que la zone : un simple retrait des non-lettres
+    # donnait 'lyone' pour « Lyon 8e » et 'lyon' pour « Lyon 08 », donc deux
+    # empreintes distinctes pour un même arrondissement — et le doublon
+    # inter-sites passait au travers
+    return f"emp:{zone_mod._norm(ville)}|{prix}|{round(surface)}"
 
 
 def rapprocher(annonces):
@@ -134,6 +157,8 @@ def garder(titre, description):
     """Filtre commun aux providers Scrapfly (mots exclus + coloc + demandes)."""
     if texte_exclu(titre) or texte_exclu(description):
         return False
+    if titre_exclu(titre):
+        return False
     if est_demande(titre):
         return False
     if CONFIG.get("exclure_coloc") and est_chambre(titre):
@@ -144,19 +169,38 @@ def garder(titre, description):
 # ---------------------------------------------------------------- Bien'ici
 
 def bienici_zone_ids():
-    """Résout les zoneIds Bien'ici pour chaque ville configurée."""
-    ids = []
-    for ville in CONFIG["villes"]:
+    """Résout les zoneIds Bien'ici pour chaque commune de la zone.
+
+    Les identifiants sont mis en cache sur disque : ils ne changent jamais,
+    et depuis que la zone compte une trentaine de communes les redemander à
+    chaque passage représentait l'essentiel du temps d'exécution.
+
+    On interroge le nom de requête, pas le nom affiché : les neuf
+    arrondissements de Lyon se replient sur une seule recherche « Lyon ».
+    """
+    ids, a_resoudre = [], []
+    for nom in {c.requete for c in ZONE.communes if not c.cp_only}:
+        connus = zone_mod.cache_lire("bienici", nom)
+        if connus is None:
+            a_resoudre.append(nom)
+        else:
+            ids.extend(connus)
+
+    for nom in a_resoudre:
+        trouves = []
         try:
             r = requests.get("https://res.bienici.com/suggest.json",
-                             params={"q": ville}, headers=UA, timeout=15)
+                             params={"q": nom}, headers=UA, timeout=15)
             r.raise_for_status()
             for s in r.json():
                 if s.get("type") == "city" and s.get("zoneIds"):
-                    ids.extend(s["zoneIds"])
+                    trouves = s["zoneIds"]
                     break
+            if trouves:  # même raison que pour PAP : on ne fige pas un échec
+                zone_mod.cache_ecrire("bienici", nom, trouves)
         except Exception as e:
-            log(f"  Bien'ici suggest KO pour {ville}: {e}")
+            log(f"  Bien'ici suggest KO pour {nom}: {e}")
+        ids.extend(trouves)
         time.sleep(0.5)
     return ids
 
@@ -167,7 +211,9 @@ def provider_bienici():
         log("  Bien'ici: aucune zone résolue, provider ignoré")
         return []
     filters = {
-        "size": 60, "from": 0, "page": 1,
+        # la zone couvre une trentaine de communes dont Lyon : 60 résultats
+        # se remplissaient d'annonces lyonnaises et masquaient la périphérie
+        "size": 100, "from": 0, "page": 1,
         "filterType": "rent",
         "propertyType": ["flat"],
         "maxPrice": CONFIG["prix_max"],
@@ -186,12 +232,14 @@ def provider_bienici():
     for ad in ads:
         titre = ad.get("title") or f"{ad.get('propertyType','')} {ad.get('roomsQuantity','?')}p"
         desc = ad.get("description", "")
-        if texte_exclu(titre) or texte_exclu(desc):
-            continue
-        if CONFIG.get("exclure_coloc") and est_chambre(titre):
+        if not garder(titre, desc):
             continue
         prix = ad.get("price")
         if prix is None or prix > CONFIG["prix_max"]:
+            continue
+        # la recherche « Lyon » ramène les neuf arrondissements : on ne garde
+        # que ceux qui sont réellement dans la zone
+        if not ZONE.accepte(ville=ad.get("city"), cp=ad.get("postalCode")):
             continue
         results.append({
             "id": f"bienici-{ad['id']}",
@@ -202,86 +250,6 @@ def provider_bienici():
             "url": f"https://www.bienici.com/annonce/{ad['id']}",
             "source": "Bien'ici",
         })
-    return results
-
-
-# ---------------------------------------------------------------- PAP
-
-# Codes géo PAP (g-codes) des villes de la zone
-PAP_GEO = {
-    "Saint-Priest": "g35662",
-    "Bron": "g35406",
-    "Vénissieux": "g35718",
-    "Mions": "g35551",
-    "Corbas": "g35443",
-    "Chassieu": "g35426",
-}
-
-
-def pap_geo_code(ville):
-    """g-code connu, sinon tentative via l'autocomplete PAP."""
-    if ville in PAP_GEO:
-        return PAP_GEO[ville]
-    try:
-        r = requests.get("https://www.pap.fr/json/ac-geo",
-                         params={"q": ville}, headers=UA, timeout=15)
-        for item in r.json():
-            if item.get("name", "").lower().startswith(ville.lower()):
-                return f"g{item['id']}"
-    except Exception:
-        pass
-    return None
-
-
-def provider_pap():
-    results = []
-    for ville in CONFIG["villes"]:
-        code = pap_geo_code(ville)
-        if not code:
-            continue
-        url = (f"https://www.pap.fr/annonce/locations-appartement-"
-               f"{ville.lower().replace(' ', '-').replace('é', 'e').replace('è', 'e')}-{code}"
-               f"-jusqu-a-{CONFIG['prix_max']}-euros")
-        try:
-            r = requests.get(url, headers=UA, timeout=20)
-            if r.status_code != 200:
-                continue
-            soup = BeautifulSoup(r.text, "html.parser")
-            for a in soup.select("a.item-title, div.search-list-item-alt a[href*='/annonces/']"):
-                href = a.get("href", "")
-                if not href or "/annonces/" not in href:
-                    continue
-                full_url = href if href.startswith("http") else "https://www.pap.fr" + href
-                m = re.search(r"r(\d+)$", href)
-                ad_id = m.group(1) if m else href
-                bloc = a.get_text(" ", strip=True)
-                parent_txt = a.find_parent().get_text(" ", strip=True) if a.find_parent() else bloc
-                if texte_exclu(parent_txt) or est_chambre(bloc):
-                    continue
-                # PAP inclut des annonces "aux alentours" parfois très loin :
-                # on ne garde que celles qui mentionnent une ville de la zone
-                if not any(v.lower() in parent_txt.lower() for v in CONFIG["villes"]):
-                    continue
-                if CONFIG.get("meuble") and "meubl" not in parent_txt.lower():
-                    # PAP ne filtre pas le meublé dans l'URL : on garde seulement
-                    # les annonces qui mentionnent explicitement le meublé
-                    continue
-                pm = re.search(r"(\d[\d\s. ]*)\s*€", parent_txt)
-                prix = int(re.sub(r"[^\d]", "", pm.group(1))) if pm else None
-                if prix and prix > CONFIG["prix_max"]:
-                    continue
-                results.append({
-                    "id": f"pap-{ad_id}",
-                    "titre": bloc[:90],
-                    "prix": prix,
-                    "surface": None,
-                    "ville": ville,
-                    "url": full_url,
-                    "source": "PAP",
-                })
-        except Exception as e:
-            log(f"  PAP KO pour {ville}: {e}")
-        time.sleep(1)
     return results
 
 
@@ -321,16 +289,26 @@ def notifier(annonce):
     msg = (f"{annonce['prix']}EUR{surface} - {annonce['ville']}\n"
            f"{annonce['titre']}\n{annonce['url']}{doublons}")
     log(f"NOUVEAU [{annonce['source']}] {msg.replace(chr(10), ' | ')}")
+    ok = True
     for topic in topics_ntfy():
         try:
-            requests.post(f"https://ntfy.sh/{topic}",
-                          data=msg.encode("utf-8"),
-                          headers={"Title": f"Logement {annonce['prix']}EUR - {annonce['ville']}",
-                                   "Priority": "high", "Tags": "house",
-                                   "Click": annonce["url"]},
-                          timeout=15)
+            r = requests.post(f"https://ntfy.sh/{topic}",
+                              data=msg.encode("utf-8"),
+                              headers={"Title": f"Logement {annonce['prix']}EUR - {annonce['ville']}",
+                                       "Priority": "high", "Tags": "house",
+                                       "Click": annonce["url"]},
+                              timeout=15)
+            # ntfy.sh limite le débit : au-delà, il répond 429 et le message
+            # est perdu. Sans ce contrôle l'échec passait inaperçu, et une
+            # annonce non notifiée était malgré tout retenue dans seen.json,
+            # donc jamais représentée.
+            if r.status_code >= 300:
+                ok = False
+                log(f"  ntfy REFUS ({topic}): HTTP {r.status_code} {r.text[:80]}")
         except Exception as e:
+            ok = False
             log(f"  ntfy KO ({topic}): {e}")
+    return ok
 
 
 # ---------------------------------------------------------------- Main
@@ -348,7 +326,7 @@ def providers_payants(dev):
     annonces = []
     for name, provider in PROVIDERS_SCRAPFLY:
         try:
-            found = provider(CONFIG, sf_cfg, garder, log, dev=dev)
+            found = provider(CONFIG, ZONE, sf_cfg, garder, log, dev=dev)
             log(f"{name}: {len(found)} annonces correspondant aux criteres")
             annonces.extend(found)
         except TropTot as e:
@@ -372,7 +350,12 @@ def main():
     dev_mode = "--dev" in sys.argv
     seen = load_seen()
     annonces = []
-    for name, provider in (("Bien'ici", provider_bienici), ("PAP", provider_pap)):
+    gratuits = [("Bien'ici", provider_bienici)]
+    # Immojeune et ParuVendu ont la même signature que les providers Scrapfly
+    # (ils ont besoin de la zone), on les adapte ici pour garder une boucle
+    gratuits += [(nom, lambda p=prov: p(CONFIG, ZONE, garder, log))
+                 for nom, prov in providers_gratuits.PROVIDERS_GRATUITS]
+    for name, provider in gratuits:
         try:
             found = provider()
             log(f"{name}: {len(found)} annonces correspondant aux criteres")
