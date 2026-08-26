@@ -1,16 +1,16 @@
 {
-  "appels": 1027,
-  "credits": 35384,
+  "appels": 1036,
+  "credits": 35754,
   "dernier_appel": {
-    "leboncoin": 1787734202.7350135,
-    "pap": 1787734215.7956586,
-    "seloger": 1787734299.581124
+    "leboncoin": 1787740757.8729835,
+    "pap": 1787740770.0861304,
+    "seloger": 1787740835.9619472
   },
   "mois": "2026-08",
   "par_provider": {
-    "leboncoin": 4086,
-    "pap": 242,
-    "seloger": 30549
+    "leboncoin": 4116,
+    "pap": 322,
+    "seloger": 30809
   },
-  "restant_compte": 128396
+  "restant_compte": 128021
 }
