@@ -52,6 +52,17 @@ def _jsonld(html):
     return blocs
 
 
+def _tag(sf_cfg, nom):
+    """Nom sous lequel la cadence de ce provider est suivie.
+
+    Deux recherches peuvent viser le meme site : sans prefixe, l'appel
+    Leboncoin du parking marquerait le creneau du logement comme servi, et
+    l'une des deux veilles serait sautee un passage sur deux. Le logement
+    garde le nom nu, pour ne pas repartir de zero sur budget.json.
+    """
+    return (sf_cfg.get("prefixe") or "") + nom
+
+
 def _dump_debug(nom, html, log):
     """Sauve le HTML une fois pour ajuster le parsing sans rebrûler de crédits."""
     from pathlib import Path
@@ -83,7 +94,7 @@ def provider_leboncoin(cfg, zone, sf_cfg, garder, log, dev=False):
         log("  Leboncoin: 'search_url' absente de config.json, provider ignoré")
         return []
 
-    res = scrape(url, provider="leboncoin", cfg=sf_cfg, log=log,
+    res = scrape(url, provider=_tag(sf_cfg, "leboncoin"), cfg=sf_cfg, log=log,
                  asp=True, render_js=False, country="fr",
                  cadence=p.get("cadence"),
                  cost_budget=p.get("cout_max"),
@@ -121,7 +132,9 @@ def provider_leboncoin(cfg, zone, sf_cfg, garder, log, dev=False):
         # 'real_estate_type' : on reçoit des maisons (1) et des bureaux/locaux
         # (5) au milieu des appartements. On refiltre donc en local, c'est
         # gratuit et ça évite les notifications parasites.
-        if _attr(ad, "real_estate_type") != "2":
+        # 2 = appartement, 4 = parking/garage.
+        attendu = str(p.get("real_estate_type") or "2")
+        if _attr(ad, "real_estate_type") != attendu:
             continue
         pieces = _attr(ad, "rooms")
         if pieces and cfg.get("pieces_max") and int(pieces) > cfg["pieces_max"]:
@@ -131,9 +144,12 @@ def provider_leboncoin(cfg, zone, sf_cfg, garder, log, dev=False):
 
         surface = _attr(ad, "square")
         loc = ad.get("location") or {}
+        lat, lon = loc.get("lat"), loc.get("lng")
         # l'URL liste une trentaine de communes ; Leboncoin élargit parfois
-        # aux alentours, et le zipcode de l'annonce fait foi
-        if not zone.accepte(ville=loc.get("city"), cp=loc.get("zipcode")):
+        # aux alentours, et le zipcode de l'annonce fait foi. En recherche
+        # par rayon, ce sont les coordonnees qui tranchent.
+        if not zone.accepte(ville=loc.get("city"), cp=loc.get("zipcode"),
+                            lat=lat, lon=lon):
             continue
         results.append({
             "id": f"leboncoin-{ad.get('list_id')}",
@@ -143,6 +159,7 @@ def provider_leboncoin(cfg, zone, sf_cfg, garder, log, dev=False):
             "ville": loc.get("city", ""),
             "url": ad.get("url") or f"https://www.leboncoin.fr/ad/locations/{ad.get('list_id')}",
             "source": "Leboncoin",
+            "distance": zone.distance(lat, lon),
         })
     return results
 
@@ -247,7 +264,7 @@ def provider_seloger(cfg, zone, sf_cfg, garder, log, dev=False):
     for i, url in enumerate(urls):
         # le créneau n'est vérifié que sur la première URL : les suivantes
         # font partie du même passage, il ne faut pas qu'elles se bloquent
-        res = scrape(url, provider="seloger", cfg=sf_cfg, log=log,
+        res = scrape(url, provider=_tag(sf_cfg, "seloger"), cfg=sf_cfg, log=log,
                      asp=True, render_js=False, country="fr",
                      cadence=p.get("cadence"),
                      # cible plus chère que Leboncoin (40 vs 30) : plafond
@@ -361,7 +378,7 @@ def provider_logicimmo(cfg, zone, sf_cfg, garder, log, dev=False):
 
     results = []
     for i, url in enumerate(urls):
-        res = scrape(url, provider="logicimmo", cfg=sf_cfg, log=log,
+        res = scrape(url, provider=_tag(sf_cfg, "logicimmo"), cfg=sf_cfg, log=log,
                      asp=True, render_js=False, country="fr",
                      cadence=p.get("cadence"), cost_budget=p.get("cout_max"),
                      cache=dev, cache_ttl=3600,
@@ -462,7 +479,7 @@ def provider_pap(cfg, zone, sf_cfg, garder, log, dev=False):
 
     results = []
     for i, url in enumerate(urls):
-        res = scrape(url, provider="pap", cfg=sf_cfg, log=log,
+        res = scrape(url, provider=_tag(sf_cfg, "pap"), cfg=sf_cfg, log=log,
                      asp=True, render_js=False, country="fr",
                      cadence=p.get("cadence"), cost_budget=p.get("cout_max"),
                      cache=dev, cache_ttl=3600,

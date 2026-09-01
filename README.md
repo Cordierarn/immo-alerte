@@ -17,6 +17,8 @@
 ```
 GitHub Actions — 8h, 10h, 12h, 13h, 15h, 18h, 20h (heure de Paris)
         │
+   deux veilles independantes : logement (Lyon est) et parking (St-Etienne)
+        │
         ├── GRATUIT ─ Bien'ici   (API JSON interne)
         │             Immojeune  (meublé étudiant / jeune actif)
         │             ParuVendu  (particuliers)
@@ -44,11 +46,24 @@ entre deux passages, et les notifications passent par [ntfy.sh](https://ntfy.sh)
 
 ## Critères
 
-Tout se règle dans [`config.json`](config.json) :
+[`config.json`](config.json) contient un compte Scrapfly commun et une liste
+de **recherches** indépendantes. Chacune a ses critères, sa zone, sa mémoire
+d'annonces vues et son topic de notification :
+
+| Recherche | Quoi | Où | Budget |
+|---|---|---|---|
+| `logement` | T1/T2 meublé | 33 communes à 45 min en TCL de Saint-Priest | ≤ 650 €/mois |
+| `parking` | Place ou garage | 1 km autour du 6 place de l'Hôtel de Ville, Saint-Étienne | ≤ 100 €/mois |
+
+Une veille qui échoue n'emporte pas l'autre, et `--recherche=parking` n'en
+joue qu'une. Réglages communs à toute recherche :
 
 | Clé | Rôle |
 |---|---|
 | `villes` | Zone surveillée : une entrée par commune (voir ci-dessous) |
+| `centre` | Recherche par rayon : `lat`, `lon`, `rayon_m` (voir plus bas) |
+| `seen` | Fichier de mémoire propre à la recherche |
+| `ntfy_topic` | Canal de notification propre à la recherche |
 | `prix_max` | Loyer maximum (charges comprises selon les annonces) |
 | `meuble` | `true` = meublés uniquement |
 | `exclure_coloc` | Écarte colocations et chambres chez l'habitant |
@@ -61,6 +76,30 @@ les locaux professionnels, mais dans une recherche de **meublés** il désigne
 presque toujours un meuble — « lit, armoire, table, bureau ». Le chercher dans
 les descriptions écartait en silence de bonnes annonces sur tous les providers
 à la fois. Il est donc désormais limité au titre.
+
+### La veille parking
+
+Un parking ne se cherche pas comme un logement : ni pièces, ni meublé, ni
+colocation à exclure, et surtout **la distance prime sur tout le reste**. Un
+garage à 300 m est utile, le même à 3 km ne l'est pas, alors que les deux
+sont « à Saint-Étienne ». Le filtrage par commune, suffisant pour le
+logement, ne dit donc rien ici.
+
+D'où le mode `centre` de `zone.py` : l'adresse est géocodée une fois via
+l'API officielle `api-adresse.data.gouv.fr`, et chaque annonce est retenue
+sur sa distance réelle au point. Bien'ici publie une position floutée dans un
+disque de ~50 m et Leboncoin donne `lat`/`lng` : largement assez précis pour
+trancher à 1 km. La distance est reprise dans la notification, où elle est
+l'information la plus utile.
+
+ParuVendu ne publie aucune coordonnée : ce provider reste au niveau de la
+commune, volontairement permissif. Mieux vaut une alerte de trop qu'un garage
+à 200 m jamais signalé.
+
+Sources retenues pour le parking : Bien'ici (30 annonces, gratuit), ParuVendu
+(30, gratuit) et Leboncoin (18, ~30 crédits). Leboncoin est de loin le moins
+cher en loyer — 30 à 70 € contre 55 à 95 € chez les agences de Bien'ici — ce
+qui confirme l'intérêt de payer pour cette source.
 
 ### La zone (`villes` + `zone.py`)
 
@@ -123,9 +162,18 @@ python immo_alerte.py --init   # premier passage : mémorise sans notifier
 python immo_alerte.py          # passages suivants (à planifier)
 ```
 
-En local, mets un topic par ligne dans `topic.txt` (gitignoré), ou renseigne
-`ntfy_topic` dans `config.json` (chaîne ou liste), ou exporte `NTFY_TOPIC`.
-Les trois sources s'additionnent et sont dédoublonnées : une alerte part sur
+Chaque recherche a son canal. `logement` utilise le secret `NTFY_TOPIC`,
+`parking` le secret `NTFY_TOPIC_PARKING` — déclaré dans `config.json` par le
+seul **nom** de la variable (`ntfy_topic_env`), jamais par sa valeur : le
+dépôt est public, un topic ntfy y serait lisible de tous, et il sert autant à
+recevoir les alertes qu'à en envoyer.
+
+Une recherche qui déclare son propre canal ne reçoit pas `NTFY_TOPIC` en
+plus : c'est tout l'intérêt d'un canal séparé, les alertes parking ne doivent
+pas atterrir aussi sur le fil logement.
+
+En local, mets un topic par ligne dans `topic.txt` (gitignoré) ou exporte la
+variable voulue. Les sources sont dédoublonnées : une alerte part sur
 tous les topics connus, et un appui sur la notification ouvre l'annonce.
 
 ## Sources couvertes
@@ -230,8 +278,14 @@ demandes déguisées en offres (« Recherche studio sur Lyon » arrive avec
 
 Projection : **~6 300 crédits/mois** pour Leboncoin (7 passages/jour, 30 cr),
 **~22 050** pour SeLoger (3 passages/jour × 7 URL × 35 cr) et **~5 400** pour
-PAP (3 passages/jour, ~60 cr en moyenne), soit **~33 750 au total, 20 % du
+PAP (3 passages/jour, ~60 cr en moyenne). La veille parking ajoute **~2 700**
+(Leboncoin, 3 passages/jour × 30 cr), soit **~36 450 au total, 22 % du
 quota**.
+
+Les cadences des deux veilles sont suivies séparément (`parking:leboncoin` et
+`leboncoin` dans `budget.json`). Sans cette séparation, l'appel Leboncoin du
+parking marquerait le créneau du logement comme servi, et l'une des deux
+veilles serait silencieusement sautée un passage sur deux.
 
 L'élargissement de la zone à 33 communes n'a coûté que ~6 000 crédits/mois,
 parce que le surcoût est concentré sur SeLoger, seul provider facturé à la

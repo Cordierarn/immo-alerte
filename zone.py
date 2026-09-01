@@ -11,6 +11,7 @@ presque partout : c'est devenu la clé primaire, le nom n'est qu'un repli.
 """
 
 import json
+import math
 import re
 import unicodedata
 from pathlib import Path
@@ -61,13 +62,37 @@ class Commune:
         return f"<Commune {self.nom}>"
 
 
-class Zone:
-    """L'ensemble des communes surveillées, avec les tests d'appartenance."""
+def distance_m(lat1, lon1, lat2, lon2):
+    """Distance a vol d'oiseau en metres (haversine)."""
+    r = 6371000.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp, dl = math.radians(lat2 - lat1), math.radians(lon2 - lon1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * r * math.asin(min(1.0, math.sqrt(a)))
 
-    def __init__(self, villes):
-        self.communes = [Commune(v) for v in villes]
+
+class Zone:
+    """L'ensemble des communes surveillees, avec les tests d'appartenance.
+
+    Deux modes, qui repondent a deux questions differentes :
+
+    - par COMMUNES, pour un logement : on accepte une liste de villes, et
+      le code postal sert de cle de rattachement.
+    - par RAYON autour d'un point, pour un parking : la, seule la distance
+      reelle compte. Un garage a 300 m est utile, le meme a 3 km ne l'est
+      pas, alors que les deux sont « a Saint-Etienne ».
+
+    Le mode rayon ne s'applique qu'aux annonces geolocalisees. Les sites
+    qui ne publient pas de coordonnees retombent sur le test par commune,
+    volontairement permissif : mieux vaut une alerte de trop qu'un garage
+    a 200 m jamais signale.
+    """
+
+    def __init__(self, villes, centre=None):
+        self.communes = [Commune(v) for v in villes or []]
         self.cps = {cp for c in self.communes for cp in c.cps}
         self.noms_norm = {n for c in self.communes if not c.cp_only for n in c.noms_norm}
+        self.centre = centre or None
 
     # ------------------------------------------------------------ accès
     @property
@@ -87,7 +112,13 @@ class Zone:
         return None
 
     # ------------------------------------------------------------ tests
-    def accepte(self, ville=None, cp=None, adresse=None):
+    def distance(self, lat, lon):
+        """Distance au centre en metres, ou None hors mode rayon."""
+        if not self.centre or lat is None or lon is None:
+            return None
+        return distance_m(self.centre["lat"], self.centre["lon"], float(lat), float(lon))
+
+    def accepte(self, ville=None, cp=None, adresse=None, lat=None, lon=None):
         """L'annonce est-elle dans la zone ?
 
         Trois niveaux, du plus fiable au plus permissif :
@@ -103,6 +134,11 @@ class Zone:
         « 69001 » cité dans un texte de vente parlerait d'autre chose que de
         la localisation du bien.
         """
+        # en mode rayon, des coordonnees tranchent seules
+        d = self.distance(lat, lon)
+        if d is not None:
+            return d <= self.centre.get("rayon_m", 1000)
+
         if cp:
             m = CP_RE.search(str(cp))
             if m:
@@ -121,7 +157,7 @@ class Zone:
 
 
 def charger(cfg):
-    return Zone(cfg["villes"])
+    return Zone(cfg.get("villes"), cfg.get("centre"))
 
 
 # ---------------------------------------------------------------- cache géo

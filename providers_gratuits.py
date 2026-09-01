@@ -53,12 +53,19 @@ def _get_tous(urls, workers=4):
         return list(ex.map(_get, urls))
 
 
-def _cibles(zone, avec_cp):
+def _cibles(zone, avec_cp, slugs=None):
     """Les (libellé, url_fragment) à interroger, dédoublonnés.
 
     `avec_cp` distingue les deux schémas repérés : ParuVendu veut
     'commune-codepostal', Immojeune 'commune-departement'.
     """
+    # une recherche peut imposer ses slugs : ParuVendu classe Saint-Etienne
+    # parmi les grandes villes, ou seul le nom nu fonctionne, la ou les
+    # communes de l'agglomeration lyonnaise exigent 'commune-codepostal'.
+    # ParuVendu ne publiant aucune coordonnee, ce provider reste de toute
+    # facon au niveau de la commune en recherche par rayon.
+    if slugs:
+        return [(s, s) for s in slugs]
     vues, cibles = set(), []
     for c in zone.communes:
         if c.cp_only or not c.cps:
@@ -198,7 +205,13 @@ def _pv_cartes(html, cfg, zone, garder):
 
         # la carte affiche 'Bron (69)' : le département ne suffit pas à
         # trancher, c'est le nom qui est comparé à la zone
-        mv = re.search(r"m\s*2\s*(.+?)\s*\(\d{2}\)", c.get_text(" ", strip=True))
+        # la carte ecrit « ... 61 m2 Bron (69) ». S'ancrer sur la surface est
+        # precis pour un logement, mais une carte parking n'en affiche aucune
+        # (« Parking / Garage Saint-Etienne (42) ») : sans repli, 29 annonces
+        # sur 30 partaient avec une ville vide, donc hors zone.
+        brut = c.get_text(" ", strip=True)
+        mv = (re.search(r"m\s*2\s*(.+?)\s*\(\d{2}\)", brut)
+              or re.search(r"([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’\-\s]{1,38})\s*\(\d{2}\)", brut))
         ville = mv.group(1).strip() if mv else ""
         if not zone.accepte(ville=ville):
             continue
@@ -221,8 +234,10 @@ def provider_paruvendu(cfg, zone, garder, log):
         return []
     # px1 est le seul filtre serveur réellement pris en compte (mesuré :
     # nbp0 et meuble sont ignorés) ; le reste est refiltré en local
-    urls = [f"https://www.paruvendu.fr/immobilier/recherche/location/appartement/"
-            f"{frag}/?px1={cfg['prix_max']}" for _, frag in _cibles(zone, avec_cp=True)]
+    chemin = p.get("chemin") or "appartement"
+    urls = [f"https://www.paruvendu.fr/immobilier/recherche/location/{chemin}/"
+            f"{frag}/?px1={cfg['prix_max']}"
+            for _, frag in _cibles(zone, avec_cp=True, slugs=p.get("slugs"))]
 
     results, echecs = [], 0
     for html in _get_tous(urls):

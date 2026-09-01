@@ -42,9 +42,16 @@ import zone as zone_mod
 
 BASE = Path(__file__).parent
 CONFIG = json.loads((BASE / "config.json").read_text(encoding="utf-8"))
-ZONE = zone_mod.charger(CONFIG)
-SEEN_FILE = BASE / "seen.json"
 LOG_FILE = BASE / "alertes.log"
+
+
+def recherches():
+    """Les veilles a executer. Chacune a ses criteres, sa zone, sa memoire
+    et son topic : le parking stephanois n'a rien a voir avec le logement
+    lyonnais, et melanger les deux dans un seul jeu de reglages obligerait a
+    des exceptions partout."""
+    return CONFIG["recherches"]
+
 
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
       "Accept-Language": "fr-FR,fr;q=0.9"}
@@ -57,22 +64,27 @@ def log(msg):
         f.write(line + "\n")
 
 
-def load_seen():
-    if SEEN_FILE.exists():
-        return set(json.loads(SEEN_FILE.read_text(encoding="utf-8")))
+def fichier_seen(cfg):
+    return BASE / (cfg.get("seen") or "seen.json")
+
+
+def load_seen(cfg):
+    f = fichier_seen(cfg)
+    if f.exists():
+        return set(json.loads(f.read_text(encoding="utf-8")))
     return set()
 
 
-def save_seen(seen):
-    SEEN_FILE.write_text(json.dumps(sorted(seen)), encoding="utf-8")
+def save_seen(cfg, seen):
+    fichier_seen(cfg).write_text(json.dumps(sorted(seen)), encoding="utf-8")
 
 
-def texte_exclu(texte):
+def texte_exclu(cfg, texte):
     t = (texte or "").lower()
-    return any(m in t for m in CONFIG["mots_exclus"])
+    return any(m in t for m in cfg.get("mots_exclus") or [])
 
 
-def titre_exclu(titre):
+def titre_exclu(cfg, titre):
     """Mots qui ne disqualifient une annonce que dans son TITRE.
 
     « bureau » désigne un local professionnel quand il titre l'annonce, mais
@@ -82,7 +94,7 @@ def titre_exclu(titre):
     sur tous les providers à la fois.
     """
     t = (titre or "").lower()
-    return any(m in t for m in CONFIG.get("mots_exclus_titre") or [])
+    return any(m in t for m in cfg.get("mots_exclus_titre") or [])
 
 
 def est_chambre(titre):
@@ -153,22 +165,30 @@ def rapprocher(annonces):
     return uniques
 
 
-def garder(titre, description):
-    """Filtre commun aux providers Scrapfly (mots exclus + coloc + demandes)."""
-    if texte_exclu(titre) or texte_exclu(description):
-        return False
-    if titre_exclu(titre):
-        return False
-    if est_demande(titre):
-        return False
-    if CONFIG.get("exclure_coloc") and est_chambre(titre):
-        return False
-    return True
+def faire_garder(cfg):
+    """Fabrique le filtre d'une recherche.
+
+    Les providers attendent tous un `garder(titre, description)` a deux
+    arguments : on referme donc les criteres de la recherche dans une
+    fermeture plutot que de propager cfg jusque dans chaque parseur.
+    """
+    def garder(titre, description):
+        if texte_exclu(cfg, titre) or texte_exclu(cfg, description):
+            return False
+        if titre_exclu(cfg, titre):
+            return False
+        if est_demande(titre):
+            return False
+        # notion propre au logement : un parking n'a pas de colocataire
+        if cfg.get("exclure_coloc") and est_chambre(titre):
+            return False
+        return True
+    return garder
 
 
 # ---------------------------------------------------------------- Bien'ici
 
-def bienici_zone_ids():
+def bienici_zone_ids(zone):
     """Résout les zoneIds Bien'ici pour chaque commune de la zone.
 
     Les identifiants sont mis en cache sur disque : ils ne changent jamais,
@@ -179,7 +199,7 @@ def bienici_zone_ids():
     arrondissements de Lyon se replient sur une seule recherche « Lyon ».
     """
     ids, a_resoudre = [], []
-    for nom in {c.requete for c in ZONE.communes if not c.cp_only}:
+    for nom in {c.requete for c in zone.communes if not c.cp_only}:
         connus = zone_mod.cache_lire("bienici", nom)
         if connus is None:
             a_resoudre.append(nom)
@@ -205,8 +225,8 @@ def bienici_zone_ids():
     return ids
 
 
-def provider_bienici():
-    zone_ids = bienici_zone_ids()
+def provider_bienici(cfg, zone, garder, log):
+    zone_ids = bienici_zone_ids(zone)
     if not zone_ids:
         log("  Bien'ici: aucune zone résolue, provider ignoré")
         return []
@@ -215,14 +235,17 @@ def provider_bienici():
         # se remplissaient d'annonces lyonnaises et masquaient la périphérie
         "size": 100, "from": 0, "page": 1,
         "filterType": "rent",
-        "propertyType": ["flat"],
-        "maxPrice": CONFIG["prix_max"],
-        "maxRooms": CONFIG.get("pieces_max", 2),
+        # 'flat' pour un logement, 'parking' pour une place ou un garage
+        "propertyType": (cfg.get("bienici") or {}).get("propertyType") or ["flat"],
+        "maxPrice": cfg["prix_max"],
         "onTheMarket": [True],
         "sortBy": "publicationDate", "sortOrder": "desc",
         "zoneIdsByTypes": {"zoneIds": zone_ids},
     }
-    if CONFIG.get("meuble"):
+    # un parking n'a ni piece ni mobilier : ces filtres videraient la recherche
+    if cfg.get("pieces_max"):
+        filters["maxRooms"] = cfg["pieces_max"]
+    if cfg.get("meuble"):
         filters["isFurnished"] = True
     r = requests.get("https://www.bienici.com/realEstateAds.json",
                      params={"filters": json.dumps(filters)}, headers=UA, timeout=20)
@@ -235,11 +258,16 @@ def provider_bienici():
         if not garder(titre, desc):
             continue
         prix = ad.get("price")
-        if prix is None or prix > CONFIG["prix_max"]:
+        if prix is None or prix > cfg["prix_max"]:
             continue
+        # Bien'ici floute la position dans un disque de ~50 m, largement
+        # assez precis pour trancher a 1 km
+        pos = (ad.get("blurInfo") or {}).get("position") or {}
+        lat, lon = pos.get("lat"), pos.get("lon")
         # la recherche « Lyon » ramène les neuf arrondissements : on ne garde
         # que ceux qui sont réellement dans la zone
-        if not ZONE.accepte(ville=ad.get("city"), cp=ad.get("postalCode")):
+        if not zone.accepte(ville=ad.get("city"), cp=ad.get("postalCode"),
+                            lat=lat, lon=lon):
             continue
         results.append({
             "id": f"bienici-{ad['id']}",
@@ -249,25 +277,37 @@ def provider_bienici():
             "ville": ad.get("city", ""),
             "url": f"https://www.bienici.com/annonce/{ad['id']}",
             "source": "Bien'ici",
+            "distance": zone.distance(lat, lon),
         })
     return results
 
 
 # ---------------------------------------------------------------- Notification
 
-def topics_ntfy():
+def topics_ntfy(cfg):
     """Tous les topics destinataires, dédoublonnés en gardant l'ordre.
 
     On additionne les sources au lieu de les faire se remplacer, pour pouvoir
     diffuser la même alerte sur plusieurs appareils (ou plusieurs personnes) :
       - NTFY_TOPIC : secret GitHub Actions, plusieurs topics séparés par ','
-      - config.json 'ntfy_topic' : une chaîne ou une liste
+      - config.json 'ntfy_topic' de la recherche : une chaîne ou une liste
       - topic.txt : fichier local gitignoré (une ligne par topic)
-    """
-    bruts = list((os.environ.get("NTFY_TOPIC") or "").split(","))
 
-    depuis_config = CONFIG.get("ntfy_topic") or []
-    bruts += depuis_config if isinstance(depuis_config, list) else depuis_config.split(",")
+    Une recherche qui declare son propre topic ne recoit PAS le secret
+    NTFY_TOPIC : c'est tout l'interet d'un canal separe, les alertes parking
+    ne doivent pas atterrir aussi sur le fil logement. Le secret ne sert donc
+    que de canal par defaut, pour les recherches sans topic propre.
+    """
+    # le depot est public : un topic ne doit JAMAIS figurer dans config.json,
+    # seul le nom du secret qui le porte y est ecrit
+    if cfg.get("ntfy_topic_env"):
+        bruts = list((os.environ.get(cfg["ntfy_topic_env"]) or "").split(","))
+    else:
+        depuis_config = cfg.get("ntfy_topic") or []
+        bruts = depuis_config if isinstance(depuis_config, list) else depuis_config.split(",")
+    bruts = [b for b in bruts if b.strip()]
+    if not bruts and not cfg.get("ntfy_topic_env"):
+        bruts = list((os.environ.get("NTFY_TOPIC") or "").split(","))
 
     local = BASE / "topic.txt"
     if local.exists():
@@ -282,20 +322,26 @@ def topics_ntfy():
     return topics
 
 
-def notifier(annonce):
+def notifier(cfg, annonce):
     surface = f" - {annonce['surface']:.0f}m2" if annonce.get("surface") else ""
     aussi = annonce.get("aussi") or []
     doublons = f"\n(aussi sur {', '.join(aussi)})" if aussi else ""
-    msg = (f"{annonce['prix']}EUR{surface} - {annonce['ville']}\n"
+    # la distance ne vaut que pour une recherche par rayon : pour un parking
+    # c'est le critere decisif, plus encore que le prix
+    d = annonce.get("distance")
+    loin = f" - a {d:.0f} m" if d is not None else ""
+    libelle = cfg.get("notif_titre") or "Logement"
+    msg = (f"{annonce['prix']}EUR{surface} - {annonce['ville']}{loin}\n"
            f"{annonce['titre']}\n{annonce['url']}{doublons}")
     log(f"NOUVEAU [{annonce['source']}] {msg.replace(chr(10), ' | ')}")
     ok = True
-    for topic in topics_ntfy():
+    for topic in topics_ntfy(cfg):
         try:
             r = requests.post(f"https://ntfy.sh/{topic}",
                               data=msg.encode("utf-8"),
-                              headers={"Title": f"Logement {annonce['prix']}EUR - {annonce['ville']}",
-                                       "Priority": "high", "Tags": "house",
+                              headers={"Title": f"{libelle} {annonce['prix']}EUR - {annonce['ville']}{loin}",
+                                       "Priority": "high",
+                                       "Tags": cfg.get("notif_tag") or "house",
                                        "Click": annonce["url"]},
                               timeout=15)
             # ntfy.sh limite le débit : au-delà, il répond 429 et le message
@@ -313,20 +359,33 @@ def notifier(annonce):
 
 # ---------------------------------------------------------------- Main
 
-def providers_payants(dev):
+def providers_payants(cfg, zone, garder, dev):
     """Providers Scrapfly : chaque appel coûte des crédits, donc chaque échec
-    de garde-fou (cadence, budget) est une info normale, pas une erreur."""
+    de garde-fou (cadence, budget) est une info normale, pas une erreur.
+
+    Le compte Scrapfly (enveloppe, reserve, creneaux) est commun a toutes les
+    recherches ; la liste des providers et leurs URL sont propres a chacune.
+    Le prefixe separe les cadences : sans lui, l'appel Leboncoin du parking
+    consommerait le creneau du logement, et l'une des deux veilles serait
+    silencieusement sautee un passage sur deux.
+    """
     from scrapfly_client import BudgetEpuise, ScrapflyKO, TropTot
     from providers_scrapfly import PROVIDERS_SCRAPFLY
 
-    sf_cfg = CONFIG.get("scrapfly") or {}
-    if not sf_cfg.get("enabled"):
+    compte = CONFIG.get("scrapfly") or {}
+    if not compte.get("enabled"):
         return []
+    sf_cfg = dict(compte)
+    sf_cfg["providers"] = cfg.get("providers") or {}
+    sf_cfg["prefixe"] = "" if cfg["nom"] == "logement" else cfg["nom"] + ":"
 
     annonces = []
     for name, provider in PROVIDERS_SCRAPFLY:
+        if name.lower().replace("'", "").replace("-", "") not in \
+           {k.lower().replace("-", "") for k in sf_cfg["providers"]}:
+            continue
         try:
-            found = provider(CONFIG, ZONE, sf_cfg, garder, log, dev=dev)
+            found = provider(cfg, zone, sf_cfg, garder, log, dev=dev)
             log(f"{name}: {len(found)} annonces correspondant aux criteres")
             annonces.extend(found)
         except TropTot as e:
@@ -340,31 +399,24 @@ def providers_payants(dev):
     return annonces
 
 
-def main():
-    if "--budget" in sys.argv:
-        from scrapfly_client import rapport
-        print(rapport())
-        return
-
-    init_mode = "--init" in sys.argv
-    dev_mode = "--dev" in sys.argv
-    seen = load_seen()
+def passage(cfg, init_mode, dev_mode, gratuit_seul):
+    """Un passage complet pour UNE recherche."""
+    zone = zone_mod.charger(cfg)
+    garder = faire_garder(cfg)
+    seen = load_seen(cfg)
     annonces = []
     gratuits = [("Bien'ici", provider_bienici)]
-    # Immojeune et ParuVendu ont la même signature que les providers Scrapfly
-    # (ils ont besoin de la zone), on les adapte ici pour garder une boucle
-    gratuits += [(nom, lambda p=prov: p(CONFIG, ZONE, garder, log))
-                 for nom, prov in providers_gratuits.PROVIDERS_GRATUITS]
+    gratuits += list(providers_gratuits.PROVIDERS_GRATUITS)
     for name, provider in gratuits:
         try:
-            found = provider()
+            found = provider(cfg, zone, garder, log)
             log(f"{name}: {len(found)} annonces correspondant aux criteres")
             annonces.extend(found)
         except Exception as e:
             log(f"{name}: erreur provider: {e}")
 
-    if "--gratuit" not in sys.argv:
-        annonces.extend(providers_payants(dev_mode))
+    if not gratuit_seul:
+        annonces.extend(providers_payants(cfg, zone, garder, dev_mode))
 
     # dédoublonnage intra-passage (un même id peut sortir de deux sélecteurs) :
     # on garde la version avec le titre le plus riche
@@ -384,29 +436,62 @@ def main():
     nouvelles = []
     for a in annonces:
         emp = empreinte(a)
-        deja = a["id"] in seen or (emp is not None and emp in seen)
-        if not deja:
+        if a["id"] in seen or (emp is not None and emp in seen):
+            # on mémorise l'empreinte même pour une annonce déjà connue : c'est
+            # ce qui permet à un jumeau publié plus tard sur un autre site
+            # d'être reconnu
+            seen.add(a["id"])
+            if emp:
+                seen.add(emp)
+        else:
             nouvelles.append(a)
-        # on mémorise l'empreinte même pour une annonce déjà connue : c'est ce
-        # qui permet à un jumeau publié plus tard sur un autre site d'être
-        # reconnu, y compris pour les annonces mémorisées avant cette version
+
+    envoyees = []
+    for a in nouvelles:
+        if init_mode or notifier(cfg, a):
+            envoyees.append(a)
+    # on ne memorise que ce qui est reellement parti : une annonce dont la
+    # notification a echoue doit rester candidate au prochain passage
+    for a in envoyees:
         seen.add(a["id"])
+        emp = empreinte(a)
         if emp:
             seen.add(emp)
-
-    for a in nouvelles:
-        if not init_mode:
-            notifier(a)
-    save_seen(seen)
+    save_seen(cfg, seen)
 
     if init_mode:
-        log(f"Init: {len(nouvelles)} annonces memorisees (pas de notification). "
-            f"Les prochaines executions n'alerteront que sur les NOUVELLES annonces.")
+        log(f"[{cfg['nom']}] Init: {len(nouvelles)} annonces memorisees (pas de notification).")
         for a in annonces:
             s = f" {a['surface']:.0f}m2" if a.get("surface") else ""
             print(f"  [{a['source']}] {a['prix']}EUR{s} - {a['ville']} - {a['titre'][:60]} - {a['url']}")
     else:
-        log(f"Passage termine: {len(nouvelles)} nouvelle(s) annonce(s).")
+        perdues = len(nouvelles) - len(envoyees)
+        reste = f", {perdues} non notifiee(s)" if perdues else ""
+        log(f"[{cfg['nom']}] Passage termine: {len(nouvelles)} nouvelle(s) annonce(s){reste}.")
+    return len(nouvelles)
+
+
+def main():
+    if "--budget" in sys.argv:
+        from scrapfly_client import rapport
+        print(rapport())
+        return
+
+    init_mode = "--init" in sys.argv
+    dev_mode = "--dev" in sys.argv
+    gratuit_seul = "--gratuit" in sys.argv
+    # --recherche=parking pour n'en jouer qu'une, sans toucher a l'autre
+    voulue = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--recherche=")), None)
+
+    for cfg in recherches():
+        if voulue and cfg["nom"] != voulue:
+            continue
+        log(f"===== recherche « {cfg['nom']} » =====")
+        try:
+            passage(cfg, init_mode, dev_mode, gratuit_seul)
+        except Exception as e:
+            # une veille qui casse ne doit pas emporter les autres
+            log(f"[{cfg['nom']}] ECHEC du passage: {e}")
 
 
 if __name__ == "__main__":
