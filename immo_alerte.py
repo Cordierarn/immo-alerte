@@ -334,8 +334,17 @@ def notifier(cfg, annonce):
     msg = (f"{annonce['prix']}EUR{surface} - {annonce['ville']}{loin}\n"
            f"{annonce['titre']}\n{annonce['url']}{doublons}")
     log(f"NOUVEAU [{annonce['source']}] {msg.replace(chr(10), ' | ')}")
+    topics = topics_ntfy(cfg)
+    if not topics:
+        # aucun destinataire = erreur de configuration, pas un envoi reussi.
+        # Sans ce garde-fou, une boucle sur zero topic renvoyait « ok » et
+        # l'annonce etait retenue comme vue : elle n'aurait plus jamais ete
+        # proposee, alors que personne ne l'a recue.
+        log(f"  [{cfg['nom']}] AUCUN TOPIC configuré — rien n'est envoyé, "
+            f"et l'annonce reste candidate au prochain passage")
+        return False
     ok = True
-    for topic in topics_ntfy(cfg):
+    for topic in topics:
         try:
             r = requests.post(f"https://ntfy.sh/{topic}",
                               data=msg.encode("utf-8"),
