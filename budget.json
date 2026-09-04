@@ -1,18 +1,18 @@
 {
-  "appels": 101,
-  "credits": 3942,
+  "appels": 111,
+  "credits": 4337,
   "dernier_appel": {
-    "leboncoin": 1788519349.643621,
-    "pap": 1788519362.0717847,
-    "parking:leboncoin": 1788519450.8519669,
-    "seloger": 1788519442.2041183
+    "leboncoin": 1788533619.0066986,
+    "pap": 1788533629.1037304,
+    "parking:leboncoin": 1788533728.627,
+    "seloger": 1788533688.4333904
   },
   "mois": "2026-09",
   "par_provider": {
-    "leboncoin": 295,
-    "pap": 800,
-    "parking:leboncoin": 232,
-    "seloger": 2615
+    "leboncoin": 325,
+    "pap": 880,
+    "parking:leboncoin": 257,
+    "seloger": 2875
   },
-  "restant_compte": 117974
+  "restant_compte": 117579
 }
