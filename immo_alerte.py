@@ -374,12 +374,16 @@ def notifier(cfg, annonce):
         log(f"  [{cfg['nom']}] AUCUN TOPIC configuré — rien n'est envoyé, "
             f"et l'annonce reste candidate au prochain passage")
         return False
+    # un en-tête HTTP ne tolère aucun saut de ligne : ParuVendu glisse un
+    # « Garage\r\nSaint-Étienne » dans la ville, et chaque alerte parking
+    # échouait en boucle sans jamais partir
+    titre = " ".join(f"{libelle} {annonce['prix']}EUR - {annonce['ville']}{loin}".split())
     ok = True
     for topic in topics:
         try:
             r = requests.post(f"https://ntfy.sh/{topic}",
                               data=msg.encode("utf-8"),
-                              headers={"Title": f"{libelle} {annonce['prix']}EUR - {annonce['ville']}{loin}",
+                              headers={"Title": titre,
                                        "Priority": "high",
                                        "Tags": cfg.get("notif_tag") or "house",
                                        "Click": annonce["url"]},
