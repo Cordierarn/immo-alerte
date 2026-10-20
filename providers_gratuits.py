@@ -18,9 +18,11 @@ Découpage des requêtes, mesuré site par site :
     par code postal de zone.py qui retient les bons.
 """
 
+import json
 import re
 import time
 import unicodedata
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 import requests
@@ -91,13 +93,12 @@ def _ij_cartes(html, cfg, zone, garder):
         badges = [b.get_text(" ", strip=True).upper() for b in c.select("span.badge")]
 
         # la colocation se lit sur le badge ET sur le chemin de l'annonce
-        if cfg.get("exclure_coloc") and ("COLOCATION" in badges or "/colocation/" in href):
-            continue
+        coloc = "COLOCATION" in badges or "/colocation/" in href
 
         titre = lien.get_text(" ", strip=True)
         desc = (c.select_one("p.description").get_text(" ", strip=True)
                 if c.select_one("p.description") else "")
-        if not garder(titre, desc):
+        if not garder(titre, desc, coloc=coloc):
             continue
 
         # '125 m² - 399 €' : surface et prix dans le même paragraphe
@@ -109,7 +110,7 @@ def _ij_cartes(html, cfg, zone, garder):
         prix = int(re.sub(r"\D", "", mp.group(1)))
         if prix > cfg["prix_max"]:
             continue
-        ms = re.search(r"([\d,.]+)\s*m", bloc)
+        ms = re.search(r"(\d+(?:[.,]\d+)?)\s*m", bloc)
         surface = float(ms.group(1).replace(",", ".")) if ms else None
 
         # badge de type : STUDIO/T1/T2... au-delà de pieces_max on écarte
@@ -250,7 +251,194 @@ def provider_paruvendu(cfg, zone, garder, log):
     return results
 
 
+# ---------------------------------------------------------------- Colocation
+#
+# Trois sites de chambres meublées, sans protection. Désactivés par défaut
+# ('enabled' doit être explicite) : ils n'ont de sens que pour la veille
+# coloc, et le logement les ignorerait de toute façon.
+
+def _actif(cfg, cle):
+    p = (cfg.get("gratuits") or {}).get(cle) or {}
+    return p if p.get("enabled") else None
+
+
+def _ha_listings(html):
+    """HousingAnywhere hydrate sa page avec un JSON.parse("...") : on
+    décode la chaîne, puis on cherche la liste 'listings' où qu'elle soit."""
+    m = re.search(r"window\.__staticRouterHydrationData = JSON\.parse\(", html)
+    if not m:
+        return []
+    try:
+        chaine, _ = json.JSONDecoder().raw_decode(html[m.end():])
+        data = json.loads(chaine)
+    except (ValueError, TypeError):
+        return []
+    pile = [data]
+    while pile:
+        n = pile.pop()
+        if isinstance(n, dict):
+            if isinstance(n.get("listings"), list):
+                return n["listings"]
+            pile.extend(n.values())
+        elif isinstance(n, list):
+            pile.extend(n)
+    return []
+
+
+def provider_housinganywhere(cfg, zone, garder, log):
+    """HousingAnywhere — chambres meublées à moyen terme, beaucoup en
+    banlieue est (Bron, Vénissieux, Saint-Priest) autour de 450 €. Chaque
+    annonce porte sa commune et ses coordonnées."""
+    p = _actif(cfg, "housinganywhere")
+    if not p:
+        return []
+    # l'alias anglais 'private-rooms' redirige vers ce chemin français
+    url = p.get("url") or "https://housinganywhere.com/fr/s/Lyon--France/chambres-priv%C3%A9es"
+    # le site renvoie un 404 de 134 octets à toute requête de `requests`,
+    # quels que soient les en-têtes, mais sert urllib normalement
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=20) as r:
+            html = r.read().decode("utf-8", "replace")
+    except (OSError, ValueError):
+        html = None
+    if html is None:
+        log("  HousingAnywhere: page injoignable")
+        return []
+    results = []
+    for a in _ha_listings(html):
+        if a.get("propertyType") not in ("PRIVATE_ROOM", "SHARED_ROOM"):
+            continue
+        ville = a.get("city") or ""
+        titre = f"Chambre {a.get('facility_bedroom_size') or '?'} m² - {ville}"
+        if not garder(titre, "", coloc=True):
+            continue
+        prix = a.get("priceEUR") or a.get("minPrice")
+        if not prix or prix > cfg["prix_max"]:
+            continue
+        geo = a.get("_geoloc") or {}
+        if not zone.accepte(ville=ville, lat=geo.get("lat"), lon=geo.get("lng")):
+            continue
+        results.append({
+            "id": f"housinganywhere-{a.get('id')}",
+            "titre": titre,
+            "prix": int(prix),
+            # surface de la chambre : c'est celle qui distingue deux
+            # chambres d'un même appartement
+            "surface": float(a["facility_bedroom_size"]) if a.get("facility_bedroom_size") else None,
+            "ville": ville,
+            "url": "https://housinganywhere.com" + (a.get("listingPath") or ""),
+            "source": "HousingAnywhere",
+        })
+    return results
+
+
+def provider_spotahome(cfg, zone, garder, log):
+    """Spotahome — chambres meublées vérifiées. Le filtre budget est
+    appliqué côté serveur ; la commune ne se lit que dans le texte."""
+    p = _actif(cfg, "spotahome")
+    if not p:
+        return []
+    url = p.get("url") or f"https://www.spotahome.com/fr/s/lyon/for-rent:rooms?budget=0-{cfg['prix_max']}"
+    html = _get(url)
+    if html is None:
+        log("  Spotahome: page injoignable")
+        return []
+    soup = BeautifulSoup(html, "html.parser")
+    results = []
+    for c in soup.select("div.l-list__item"):
+        lien = c.select_one("a[href*='/for-rent:']")
+        prix_el = c.select_one("[class*=price__amount]")
+        if not lien or not prix_el:
+            continue
+        mid = re.search(r"/for-rent:[a-z]+/(\d+)", lien["href"])
+        texte = c.get_text(" ", strip=True)
+        titre = next((t for t in c.stripped_strings
+                      if len(t) > 25 and re.search(r"chambre|studio|appartement", t, re.I)), texte[:90])
+        if not garder(titre, texte, coloc=True):
+            continue
+        prix = int(re.sub(r"\D", "", prix_el.get_text()) or 0)
+        if not prix or prix > cfg["prix_max"]:
+            continue
+        # recherche « Lyon » : la métropole entière, et seule la commune
+        # citée dans le texte tranche. « à Lyon » / « Gerland, Lyon » vise la
+        # ville ; « proche Lyon » une commune voisine, qui doit alors être
+        # nommée (« à Villeurbanne ») pour être retenue.
+        dans_lyon = re.search(r"(?:\bà|,)\s*Lyon\b", titre)
+        if not zone.accepte(ville="Lyon" if dans_lyon else None, adresse=texte):
+            continue
+        ms = re.search(r"(\d+(?:[.,]\d+)?)\s*m²", titre)
+        results.append({
+            "id": f"spotahome-{mid.group(1) if mid else lien['href']}",
+            "titre": titre[:90],
+            "prix": prix,
+            "surface": float(ms.group(1).replace(",", ".")) if ms else None,
+            "ville": "",
+            "url": "https://www.spotahome.com" + lien["href"],
+            "source": "Spotahome",
+        })
+    return results
+
+
+def _app_cartes(html, cfg, zone, garder):
+    soup = BeautifulSoup(html, "html.parser")
+    results = []
+    for c in soup.select("li.results-list__item"):
+        lien = next((a for a in c.select("a[href]")
+                     if re.search(r"/colocations/.+/\d{6,}$", a["href"])), None)
+        if not lien:
+            continue
+        texte = c.get_text(" ", strip=True)
+        # « €770 - €920 » pour une résidence : la chambre la moins chère
+        mp = re.search(r"€\s*([\d.  ]+)", texte)
+        if not mp:
+            continue
+        prix = int(re.sub(r"\D", "", mp.group(1)))
+        mv = re.search(r"\((\d{5})\s+([^)]+)\)", texte)
+        cp, ville = (mv.group(1), mv.group(2)) if mv else (None, "")
+        titre = next((t for t in c.stripped_strings if len(t) > 20 and "€" not in t
+                      and "(" not in t and "Disponible" not in t), texte[:90])
+        if not garder(titre, texte, coloc=True):
+            continue
+        if prix > cfg["prix_max"] or not zone.accepte(cp=cp, ville=ville):
+            continue
+        results.append({
+            "id": f"appartager-{lien['href'].rsplit('/', 1)[-1]}",
+            "titre": titre[:90],
+            "prix": prix,
+            "surface": None,
+            "ville": ville,
+            "url": "https://www.appartager.com" + lien["href"],
+            "source": "Appartager",
+        })
+    return results
+
+
+def provider_appartager(cfg, zone, garder, log):
+    """Appartager — beaucoup de particuliers, 10 annonces par page."""
+    p = _actif(cfg, "appartager")
+    if not p:
+        return []
+    pages = max(1, int(p.get("pages_max", 3)))
+    urls = []
+    for slug in p.get("slugs") or ["lyon"]:
+        urls.append(f"https://www.appartager.com/colocations/{slug}")
+        urls += [f"https://www.appartager.com/colocations/{slug}/page{n}"
+                 for n in range(2, pages + 1)]
+    results, echecs = [], 0
+    for html in _get_tous(urls):
+        if html is None:
+            echecs += 1
+            continue
+        results.extend(_app_cartes(html, cfg, zone, garder))
+    if echecs:
+        log(f"  Appartager: {echecs}/{len(urls)} page(s) injoignable(s)")
+    return results
+
+
 PROVIDERS_GRATUITS = (
     ("Immojeune", provider_immojeune),
     ("ParuVendu", provider_paruvendu),
+    ("HousingAnywhere", provider_housinganywhere),
+    ("Spotahome", provider_spotahome),
+    ("Appartager", provider_appartager),
 )

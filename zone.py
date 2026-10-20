@@ -56,6 +56,10 @@ class Commune:
         # l'accepte sur le code postal mais jamais sur le nom, sans quoi il
         # ferait entrer dans la zone les huit arrondissements hors périmètre
         self.cp_only = bool(brut.get("cp_only"))
+        # reconnue sur son nom EXACT seulement : « Lyon » tout court désigne
+        # la ville, mais « Sainte-Foy-lès-Lyon » ou « proche Lyon » non. Sert
+        # aux sites de coloc qui n'écrivent pas l'arrondissement.
+        self.nom_exact = bool(brut.get("nom_exact"))
         self.noms_norm = {_norm(n) for n in [self.nom] + list(brut.get("alias") or [])}
 
     def __repr__(self):
@@ -91,14 +95,16 @@ class Zone:
     def __init__(self, villes, centre=None):
         self.communes = [Commune(v) for v in villes or []]
         self.cps = {cp for c in self.communes for cp in c.cps}
-        self.noms_norm = {n for c in self.communes if not c.cp_only for n in c.noms_norm}
+        self.noms_norm = {n for c in self.communes
+                          if not (c.cp_only or c.nom_exact) for n in c.noms_norm}
+        self.noms_exacts = {n for c in self.communes if c.nom_exact for n in c.noms_norm}
         self.centre = centre or None
 
     # ------------------------------------------------------------ accès
     @property
     def noms(self):
         """Noms lisibles, pour les providers qui interrogent par commune."""
-        return [c.nom for c in self.communes if not c.cp_only]
+        return [c.nom for c in self.communes if not (c.cp_only or c.nom_exact)]
 
     @property
     def prioritaires(self):
@@ -151,6 +157,8 @@ class Zone:
             if not texte:
                 continue
             plat = _norm(texte)
+            if plat in self.noms_exacts:
+                return True
             if any(n and n in plat for n in self.noms_norm):
                 return True
         return False

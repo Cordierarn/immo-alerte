@@ -182,7 +182,9 @@ def provider_leboncoin(cfg, zone, sf_cfg, garder, log, dev=False):
     for ad in ads:
         titre = (ad.get("subject") or "").strip()
         desc = ad.get("body") or ""
-        if not garder(titre, desc):
+        # catégorie 11 = Colocations : tout ce qu'elle renvoie en est
+        coloc = True if str(ad.get("category_id")) == "11" else None
+        if not garder(titre, desc, coloc=coloc):
             continue
 
         prix = None
@@ -198,9 +200,10 @@ def provider_leboncoin(cfg, zone, sf_cfg, garder, log, dev=False):
         # 'real_estate_type' : on reçoit des maisons (1) et des bureaux/locaux
         # (5) au milieu des appartements. On refiltre donc en local, c'est
         # gratuit et ça évite les notifications parasites.
-        # 2 = appartement, 4 = parking/garage.
-        attendu = str(p.get("real_estate_type") or "2")
-        if _attr(ad, "real_estate_type") != attendu:
+        # 2 = appartement, 4 = parking/garage. null dans config.json pour la
+        # catégorie Colocations, dont les annonces ne portent pas ce champ.
+        attendu = p.get("real_estate_type", "2")
+        if attendu and _attr(ad, "real_estate_type") != str(attendu):
             continue
         pieces = _attr(ad, "rooms")
         if pieces and cfg.get("pieces_max") and int(pieces) > cfg["pieces_max"]:
@@ -655,16 +658,18 @@ def _figaro_annonces(html, cfg, zone, garder):
     annonces = liste.get("classifieds") or []
     results = []
     for a in annonces:
-        # 'chambre' = chambre chez l'habitant ou en résidence
-        if a.get("type") != "appartement" or "colocation" in (a.get("options") or []):
+        # 'chambre' = chambre en colocation, chez l'habitant ou en résidence
+        if a.get("type") not in ("appartement", "chambre"):
             continue
+        coloc = a.get("type") == "chambre" or "colocation" in (a.get("options") or [])
         desc = a.get("description") or ""
         loc = a.get("location") or {}
         ville_site = re.sub(r"\s*\(\d+\)$", "", loc.get("city") or "")
         pieces = (a.get("roomCount") or [None])[0]
         surface = a.get("area")
-        titre = f"Appartement {pieces or '?'} p. {surface or '?'} m² - {ville_site}"
-        if not garder(titre, desc):
+        titre = (f"Chambre {surface or '?'} m² - {ville_site}" if a.get("type") == "chambre"
+                 else f"Appartement {pieces or '?'} p. {surface or '?'} m² - {ville_site}")
+        if not garder(titre, desc, coloc=coloc):
             continue
 
         prix = a.get("price")
@@ -719,9 +724,9 @@ def _superimmo_annonces(html, cfg, zone, garder):
         ville_site, cp = (mv.group(1).strip(), mv.group(2)) if mv else ("", None)
 
         titre = f"{faits} - {ville_site}" if faits else texte[:90]
-        if not garder(titre, texte):
-            continue
-        if "Colocation" in faits:
+        # lu sur la carte et non dans `faits` : « • Colocation » précède
+        # directement la commune, que la regex des faits englobe
+        if not garder(titre, texte, coloc=bool(re.search(r"•\s*Colocation\b", texte))):
             continue
         if cfg.get("meuble") and "Meublé" not in faits:
             continue
@@ -761,6 +766,52 @@ def provider_superimmo(cfg, zone, sf_cfg, garder, log, dev=False):
                     cfg, zone, sf_cfg, garder, log, dev)
 
 
+def _lcdc_annonces(html, cfg, zone, garder):
+    """La Carte des Colocs : le JSON-LD liste les 30 annonces de la page
+    avec prix, surface et commune. La commune se limite à « Lyon », sans
+    arrondissement : c'est pourquoi la veille coloc accepte Lyon par son
+    nom (toute la ville est dans la zone)."""
+    items = []
+    for bloc in _jsonld(html):
+        if isinstance(bloc, dict) and bloc.get("@type") == "SearchResultsPage":
+            items = ((bloc.get("mainEntity") or {}).get("itemListElement")) or []
+    results = []
+    for li in items:
+        it = li.get("item") or {}
+        url = it.get("url") or li.get("url") or ""
+        titre = it.get("name") or "Colocation"
+        about = it.get("about") or {}
+        ville = ((about.get("address") or {}).get("addressLocality")) or ""
+        # tout le site est de la colocation
+        if not garder(titre, "", coloc=True):
+            continue
+        prix = (it.get("offers") or {}).get("price")
+        if prix is None or prix > cfg["prix_max"]:
+            continue
+        if not zone.accepte(ville=ville):
+            continue
+        # la surface publiée est celle du logement entier, pas de la chambre :
+        # on ne la reprend que dans le titre, sinon l'empreinte rapprocherait
+        # deux chambres différentes d'un même appartement
+        results.append({
+            "id": f"lcdc-{url.rstrip('/').rsplit('/', 1)[-1]}",
+            "titre": f"Chambre en coloc - {titre}"[:90],
+            "prix": int(prix),
+            "surface": None,
+            "ville": ville,
+            "url": url,
+            "source": "La Carte des Colocs",
+        })
+    return results, len(items)
+
+
+def provider_lacartedescolocs(cfg, zone, sf_cfg, garder, log, dev=False):
+    """La Carte des Colocs — le site de référence de la colocation, une page
+    de 30 annonces par commune, à 1 crédit (Cloudflare)."""
+    return _passage("lacartedescolocs", "La Carte des Colocs", _lcdc_annonces,
+                    cfg, zone, sf_cfg, garder, log, dev)
+
+
 PROVIDERS_SCRAPFLY = (
     ("Leboncoin", provider_leboncoin),
     ("PAP", provider_pap),
@@ -769,4 +820,5 @@ PROVIDERS_SCRAPFLY = (
     ("Entreparticuliers", provider_entreparticuliers),
     ("Figaro", provider_figaro),
     ("Superimmo", provider_superimmo),
+    ("La Carte des Colocs", provider_lacartedescolocs),
 )

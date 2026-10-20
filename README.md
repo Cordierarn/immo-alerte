@@ -55,6 +55,7 @@ d'annonces vues et son topic de notification :
 | Recherche | Quoi | Où | Budget |
 |---|---|---|---|
 | `logement` | T1/T2 meublé | 33 communes à 45 min en TCL de Saint-Priest | ≤ 650 €/mois |
+| `coloc` | Chambre en colocation | Même zone que le logement | ≤ 650 €/mois |
 | `parking` | Place ou garage | 1 km autour du 6 place de l'Hôtel de Ville, Saint-Étienne | ≤ 100 €/mois |
 
 Une veille qui échoue n'emporte pas l'autre, et `--recherche=parking` n'en
@@ -78,6 +79,32 @@ les locaux professionnels, mais dans une recherche de **meublés** il désigne
 presque toujours un meuble — « lit, armoire, table, bureau ». Le chercher dans
 les descriptions écartait en silence de bonnes annonces sur tous les providers
 à la fois. Il est donc désormais limité au titre.
+
+### La veille coloc
+
+Le miroir exact du logement : `colocs_seules: true` ne garde **que** ce que
+`exclure_coloc` écarte de l'autre côté, si bien qu'une annonce n'arrive
+jamais sur les deux canaux. Ni `pieces_max` (une coloc est un T3-T6) ni
+`meuble` (les chambres le sont presque toutes).
+
+La colocation est reconnue de deux façons, de la plus fiable à la moins :
+
+1. **le site la signale** et le provider le transmet à `garder(..., coloc=)` :
+   catégorie Colocations de Leboncoin, badge Immojeune, type `chambre` et
+   option `colocation` du Figaro, mention « • Colocation » de Superimmo, et
+   les sites 100 % coloc (La Carte des Colocs, HousingAnywhere, Spotahome,
+   Appartager) ;
+2. sinon, **le texte** (`est_coloc`) : « colocation », « chambre dans… »,
+   « appartement partagé »...
+
+Les sites de coloc écrivent souvent « Lyon » sans arrondissement. Toute la
+ville étant dans la zone, la veille coloc déclare `Lyon` en `nom_exact` :
+accepté sur le nom seul, mais **exact**, pour que « Sainte-Foy-lès-Lyon » ou
+« chambre proche Lyon » ne passent pas par simple inclusion.
+
+Elle notifie sur le secret `NTFY_TOPIC_COLOC`. Au lancement, les 374
+annonces déjà en ligne ont été mémorisées (`--init`) : seules les nouvelles
+sont notifiées.
 
 ### La veille parking
 
@@ -121,6 +148,7 @@ Chaque entrée porte son ou ses codes postaux :
 | `requete` | Nom à envoyer aux sites quand il diffère du nom affiché |
 | `alias` | Autres noms acceptés (communes fusionnées) |
 | `cp_only` | Reconnue au code postal seulement, jamais au nom |
+| `nom_exact` | Reconnue au nom seulement s'il est écrit tel quel (veille coloc) |
 
 Pourquoi un module dédié plutôt qu'une liste de noms : le test historique
 `"Lyon 8e" in adresse` échouait sur trois des quatre écritures rencontrées
@@ -194,7 +222,10 @@ tous les topics connus, et un appui sur la notification ouvre l'annonce.
 | Logic-Immo | ❌ | — | Tourne sur la plateforme SeLoger : même stock, payé deux fois |
 | Avendrealouer | ❌ | — | Redirige désormais vers Leboncoin : stock déjà couvert |
 | Rentola | ❌ | — | Agrégateur à abonnement payant, recopie les autres portails |
-| Spotahome / HousingAnywhere | ❌ | — | Quasi exclusivement des chambres en colocation, ≥ 660 € |
+| La Carte des Colocs | ✅ Scrapfly (coloc) | 1 cr × 8 communes | Cloudflare. Le site de référence, 30 annonces par commune |
+| HousingAnywhere | ✅ intégré (coloc) | 0 | Chambres meublées, banlieue est ~450 €. Bloque `requests`, servi à urllib |
+| Spotahome | ✅ intégré (coloc) | 0 | Chambres meublées vérifiées, budget filtré côté serveur |
+| Appartager | ✅ intégré (coloc) | 0 | Beaucoup de particuliers, code postal sur chaque carte |
 | Orpi / Studapart | ❌ | — | Annonces chargées en JavaScript (render_js = +5 cr), stock d'agences déjà repris par Figaro/Bien'ici |
 | Studapart / Lokaviz | ❌ | — | Connexion obligatoire avant toute recherche |
 

@@ -18,6 +18,10 @@ Providers payants via Scrapfly (anti-bot, cadence et budget encadrés) :
   - Logic-Immo : une requête pour toute la zone
   - Entreparticuliers, Figaro Immo, Superimmo : Cloudflare, mais 1 crédit
                  la page départementale
+  - La Carte des Colocs : 1 crédit par commune (veille coloc)
+
+Providers gratuits propres à la veille coloc : HousingAnywhere, Spotahome,
+Appartager.
 
 Usage :
   python immo_alerte.py            # un passage (à planifier toutes les 15 min)
@@ -115,6 +119,21 @@ def est_chambre(titre):
     return bool(re.search(r"\bchambres?\b", t))
 
 
+COLOC_RE = re.compile(
+    r"\bco-?loc|colocataire|appartement partag|logement partag|chambre priv"
+    r"|chambre (?:meubl\w*\s+)?(?:à louer|dans|en|chez)", re.I)
+
+
+def est_coloc(titre, description=""):
+    """Repli textuel pour les sites qui ne marquent pas la colocation.
+
+    Les sites qui la signalent eux-mêmes (badge Immojeune, type « chambre »
+    du Figaro, catégorie Leboncoin...) passent l'information à garder() :
+    ce test ne sert que pour les autres.
+    """
+    return est_chambre(titre) or bool(COLOC_RE.search(f"{titre} {description}"))
+
+
 def est_demande(titre):
     """Leboncoin étiquette 'offer' des annonces qui sont des DEMANDES.
 
@@ -128,8 +147,10 @@ def est_demande(titre):
 # Qui gagne quand la même annonce sort de plusieurs sites : on garde la
 # source la plus utile (particuliers d'abord, lien direct, pas de frais).
 ORDRE_SOURCES = {"Leboncoin": 0, "PAP": 1, "Entreparticuliers": 2,
-                 "ParuVendu": 3, "Immojeune": 4, "Bien'ici": 5, "SeLoger": 6,
-                 "Logic-Immo": 7, "Figaro Immo": 8, "Superimmo": 9}
+                 "ParuVendu": 3, "Appartager": 4, "La Carte des Colocs": 5,
+                 "Immojeune": 6, "HousingAnywhere": 7, "Spotahome": 8,
+                 "Bien'ici": 9, "SeLoger": 10, "Logic-Immo": 11,
+                 "Figaro Immo": 12, "Superimmo": 13}
 
 
 def empreinte(annonce):
@@ -175,15 +196,22 @@ def faire_garder(cfg):
     arguments : on referme donc les criteres de la recherche dans une
     fermeture plutot que de propager cfg jusque dans chaque parseur.
     """
-    def garder(titre, description):
+    def garder(titre, description, coloc=None):
+        """`coloc` : True/False quand le site le dit, None sinon (on lit
+        alors le texte)."""
         if texte_exclu(cfg, titre) or texte_exclu(cfg, description):
             return False
         if titre_exclu(cfg, titre):
             return False
         if est_demande(titre):
             return False
+        # la veille coloc est le miroir du logement : elle ne garde QUE ce
+        # que l'autre écarte, pour qu'une annonce n'arrive jamais sur les
+        # deux canaux
+        if cfg.get("colocs_seules"):
+            return coloc if coloc is not None else est_coloc(titre, description)
         # notion propre au logement : un parking n'a pas de colocataire
-        if cfg.get("exclure_coloc") and est_chambre(titre):
+        if cfg.get("exclure_coloc") and (coloc or est_chambre(titre)):
             return False
         return True
     return garder
@@ -393,7 +421,7 @@ def providers_payants(cfg, zone, garder, dev):
 
     annonces = []
     for name, provider in PROVIDERS_SCRAPFLY:
-        if name.lower().replace("'", "").replace("-", "") not in \
+        if name.lower().replace("'", "").replace("-", "").replace(" ", "") not in \
            {k.lower().replace("-", "") for k in sf_cfg["providers"]}:
             continue
         try:
