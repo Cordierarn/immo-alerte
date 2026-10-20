@@ -1,7 +1,11 @@
 {
-  "appels": 472,
-  "credits": 18298,
+  "appels": 483,
+  "credits": 18333,
   "dernier_appel": {
+    "coloc:figaro": 1792482909.2743676,
+    "coloc:lacartedescolocs": 1792482927.85251,
+    "coloc:leboncoin": 1792482906.7944217,
+    "coloc:superimmo": 1792482911.3834677,
     "entreparticuliers": 1792478817.8207614,
     "figaro": 1792478824.2802086,
     "leboncoin": 1792478723.4283879,
@@ -12,6 +16,10 @@
   },
   "mois": "2026-10",
   "par_provider": {
+    "coloc:figaro": 1,
+    "coloc:lacartedescolocs": 8,
+    "coloc:leboncoin": 25,
+    "coloc:superimmo": 1,
     "entreparticuliers": 1,
     "figaro": 1,
     "leboncoin": 1500,
@@ -20,5 +28,5 @@
     "seloger": 11860,
     "superimmo": 1
   },
-  "restant_compte": 168622
+  "restant_compte": 168150
 }
