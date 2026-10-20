@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Providers passant par Scrapfly : Leboncoin et SeLoger (DataDome).
+Providers passant par Scrapfly : Leboncoin, SeLoger, PAP, Logic-Immo,
+Entreparticuliers, Figaro Immobilier et Superimmo.
 
 Principe commun d'économie : UNE seule requête par passage et par site.
 Les deux sites embarquent l'intégralité des résultats de recherche dans un
@@ -50,6 +51,71 @@ def _jsonld(html):
         except json.JSONDecodeError:
             continue
     return blocs
+
+
+_NUXT_ENVELOPPES = {"Reactive", "ShallowReactive", "Ref", "ShallowRef",
+                    "EmptyRef", "EmptyShallowRef", "Set", "Map", "Date",
+                    "null", "NuxtError", "Island"}
+
+
+def _nuxt_data(html):
+    """Décode le __NUXT_DATA__ des pages Nuxt 3 (Figaro Immobilier).
+
+    Ce n'est pas un JSON lisible tel quel mais le format « devalue » : un
+    tableau plat où chaque objet référence ses valeurs par leur index dans
+    ce même tableau, et où ['Reactive', i] enveloppe une valeur. On résout
+    les références récursivement en partant de la racine.
+    """
+    m = re.search(
+        r'<script[^>]+id="__NUXT_DATA__"[^>]*>(.*?)</script>', html, re.S)
+    if not m:
+        return None
+    try:
+        brut = json.loads(m.group(1))
+    except json.JSONDecodeError:
+        return None
+    memo = {}
+
+    def resoudre(i):
+        if i in memo:
+            return memo[i]
+        v = brut[i]
+        if isinstance(v, list) and v and v[0] in _NUXT_ENVELOPPES:
+            out = resoudre(v[1]) if len(v) > 1 and isinstance(v[1], int) else None
+        elif isinstance(v, list):
+            out = memo[i] = []
+            out.extend(resoudre(x) if isinstance(x, int) else x for x in v)
+        elif isinstance(v, dict):
+            out = memo[i] = {}
+            for k, x in v.items():
+                out[k] = resoudre(x) if isinstance(x, int) else x
+        else:
+            out = v
+        memo[i] = out
+        return out
+
+    try:
+        return resoudre(0)
+    except (IndexError, TypeError, RecursionError):
+        return None
+
+
+def _urls(p):
+    urls = p.get("search_url")
+    return [urls] if isinstance(urls, str) else list(urls or [])
+
+
+def _ville_zone(zone, cp, defaut=""):
+    """Nom de commune tel que la zone l'écrit, retrouvé par code postal.
+
+    Le rapprochement inter-sites compare les villes : « Lyon 7ème (69) »
+    chez l'un et « Lyon 7e » chez l'autre feraient passer le doublon.
+    """
+    exacte = zone.par_cp(cp) if cp else None
+    return exacte.nom if exacte else defaut
+
+
+MEUBLE_RE = re.compile(r"(?<!non )(?<!non-)meubl", re.I)
 
 
 def _tag(sf_cfg, nom):
@@ -491,9 +557,216 @@ def provider_pap(cfg, zone, sf_cfg, garder, log, dev=False):
     return results
 
 
+# ---------------------------------------------------------------- Sites à 1 crédit
+#
+# Entreparticuliers, Figaro Immobilier et Superimmo sont derrière Cloudflare
+# (403 en direct), mais l'ASP de Scrapfly les passe sans escalade : mesuré à
+# 1 crédit la page, contre 30 à 40 pour Leboncoin, PAP ou SeLoger. Chacun se
+# contente d'une page départementale triée par date, filtrée ensuite par
+# code postal.
+
+def _passage(cle, nom, parser, cfg, zone, sf_cfg, garder, log, dev):
+    """Boucle commune : une ou plusieurs URL, un parseur qui renvoie
+    (annonces, nombre_de_cartes_vues). Zéro carte = structure changée,
+    on sauve le HTML pour corriger hors ligne."""
+    p = (sf_cfg.get("providers") or {}).get(cle) or {}
+    if not p.get("enabled"):
+        return []
+    urls = _urls(p)
+    if not urls:
+        log(f"  {nom}: 'search_url' absente de config.json, provider ignoré")
+        return []
+
+    results = []
+    for i, url in enumerate(urls):
+        res = scrape(url, provider=_tag(sf_cfg, cle), cfg=sf_cfg, log=log,
+                     asp=True, render_js=False, country="fr",
+                     cadence=p.get("cadence"), cost_budget=p.get("cout_max"),
+                     cache=dev, cache_ttl=3600,
+                     ignorer_cadence=dev or i > 0)
+        trouves, nb = parser(res["content"], cfg, zone, garder)
+        if not nb:
+            _dump_debug(f"{cle}{i}", res["content"], log)
+        results.extend(trouves)
+    return results
+
+
+def _ep_annonces(html, cfg, zone, garder):
+    """Entreparticuliers : une `article` par annonce, dont le lien porte
+    commune et code postal (`/location/saint-priest-69800/.../ref-123`).
+
+    La carte ne dit pas si le logement est meublé, et la page de détail
+    coûterait un appel par annonce. Sur un stock aussi maigre (une quinzaine
+    d'annonces pour tout le Rhône) on préfère ne pas filtrer : mieux vaut un
+    non-meublé de trop qu'un meublé de particulier jamais signalé.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    cartes = [c for c in soup.select("article") if c.select_one("a[href*='/ref-']")]
+    results = []
+    for c in cartes:
+        href = c.select_one("a[href*='/ref-']")["href"]
+        mid = re.search(r"/ref-(\d+)", href)
+        mcp = re.search(r"/location/[a-z0-9-]+-(\d{5})/", href)
+        cp = mcp.group(1) if mcp else None
+
+        texte = c.get_text(" ", strip=True)
+        mt = re.search(r"(Appartement|Studio|Maison)[^#]*?m²", texte)
+        titre = mt.group(0) if mt else texte[:90]
+        if not garder(titre, texte):
+            continue
+        if not zone.accepte(cp=cp, adresse=texte):
+            continue
+
+        mp = re.search(r"(\d[\d\s  ]*)\s*€", texte)
+        if not mp:
+            continue
+        prix = int(re.sub(r"\D", "", mp.group(1)))
+        if prix > cfg["prix_max"]:
+            continue
+        mpi = re.search(r"(\d+)\s*pièces?", texte)
+        if mpi and cfg.get("pieces_max") and int(mpi.group(1)) > cfg["pieces_max"]:
+            continue
+        ms = re.search(r"(\d+(?:[.,]\d+)?)\s*m²", texte)
+
+        results.append({
+            "id": f"entreparticuliers-{mid.group(1) if mid else href}",
+            "titre": titre[:90],
+            "prix": prix,
+            "surface": float(ms.group(1).replace(",", ".")) if ms else None,
+            "ville": _ville_zone(zone, cp),
+            "url": href if href.startswith("http") else "https://www.entreparticuliers.com" + href,
+            "source": "Entreparticuliers",
+        })
+    return results, len(cartes)
+
+
+def provider_entreparticuliers(cfg, zone, sf_cfg, garder, log, dev=False):
+    """Entreparticuliers — particuliers uniquement, comme PAP."""
+    return _passage("entreparticuliers", "Entreparticuliers", _ep_annonces,
+                    cfg, zone, sf_cfg, garder, log, dev)
+
+
+def _figaro_annonces(html, cfg, zone, garder):
+    """Figaro Immobilier : le JSON-LD n'a ni prix ni pièces, mais le
+    __NUXT_DATA__ embarque la réponse complète de l'API de recherche —
+    prix, surface, pièces, code postal, coordonnées et description."""
+    data = _nuxt_data(html) or {}
+    liste = ((data.get("data") or {}).get("classifiedsListResponse") or {})
+    annonces = liste.get("classifieds") or []
+    results = []
+    for a in annonces:
+        # 'chambre' = chambre chez l'habitant ou en résidence
+        if a.get("type") != "appartement" or "colocation" in (a.get("options") or []):
+            continue
+        desc = a.get("description") or ""
+        loc = a.get("location") or {}
+        ville_site = re.sub(r"\s*\(\d+\)$", "", loc.get("city") or "")
+        pieces = (a.get("roomCount") or [None])[0]
+        surface = a.get("area")
+        titre = f"Appartement {pieces or '?'} p. {surface or '?'} m² - {ville_site}"
+        if not garder(titre, desc):
+            continue
+
+        prix = a.get("price")
+        if not prix or prix > cfg["prix_max"]:
+            continue
+        if pieces and cfg.get("pieces_max") and int(pieces) > cfg["pieces_max"]:
+            continue
+        # pas de champ « meublé » : la description fait foi, en écartant
+        # « non meublé »
+        if cfg.get("meuble") and not MEUBLE_RE.search(desc):
+            continue
+
+        cp = loc.get("postalCode")
+        lat, lon = loc.get("latitude"), loc.get("longitude")
+        if not zone.accepte(ville=ville_site, cp=cp, lat=lat, lon=lon):
+            continue
+        results.append({
+            "id": f"figaro-{a.get('id')}",
+            "titre": titre[:90],
+            "prix": int(prix),
+            "surface": float(surface) if surface else None,
+            "ville": _ville_zone(zone, cp, ville_site),
+            "url": a.get("recordLink") or f"https://immobilier.lefigaro.fr/annonces/annonce-{a.get('id')}.html",
+            "source": "Figaro Immo",
+            "distance": zone.distance(lat, lon),
+        })
+    return results, len(annonces)
+
+
+def provider_figaro(cfg, zone, sf_cfg, garder, log, dev=False):
+    """Figaro Immobilier — gros agrégateur d'agences, ~15 nouveautés par
+    jour sous 650 € dans le Rhône : une page de 30 suffit à 3 passages."""
+    return _passage("figaro", "Figaro Immo", _figaro_annonces,
+                    cfg, zone, sf_cfg, garder, log, dev)
+
+
+def _superimmo_annonces(html, cfg, zone, garder):
+    """Superimmo : cartes `article[data-listing-id]`. La ligne de faits
+    (« Appartement • 21 m² • Meublé • 1 pièce ») porte le meublé et la
+    colocation en clair, ce qui évite de deviner depuis la description."""
+    soup = BeautifulSoup(html, "html.parser")
+    cartes = soup.select("article[data-listing-id]")
+    results = []
+    for c in cartes:
+        lien = c.select_one("a[href^='/annonces/']")
+        if not lien:
+            continue
+        texte = c.get_text(" ", strip=True)
+        mf = re.search(r"(Appartement|Studio|Maison)\s*•[^|]*?(?=\s[A-ZÉ][\w' -]+\(\d{5}\))", texte)
+        faits = mf.group(0) if mf else ""
+        mv = re.search(r"([A-ZÉ][\w' -]+?)\s*\((\d{5})\)", texte)
+        ville_site, cp = (mv.group(1).strip(), mv.group(2)) if mv else ("", None)
+
+        titre = f"{faits} - {ville_site}" if faits else texte[:90]
+        if not garder(titre, texte):
+            continue
+        if "Colocation" in faits:
+            continue
+        if cfg.get("meuble") and "Meublé" not in faits:
+            continue
+        if not zone.accepte(ville=ville_site, cp=cp):
+            continue
+
+        # le prix se lit dans le lien et non dans la carte : le compteur de
+        # photos qui le précède (« 4 501 € ») s'y collerait en 4 501 €
+        bloc = next((a.get_text(" ", strip=True) for a in c.select("a[href^='/annonces/']")
+                     if "€" in a.get_text()), "")
+        mp = re.match(r"\s*(\d[\d\s  ]*)(?:,\d+)?\s*€", bloc)
+        if not mp:
+            continue
+        prix = int(re.sub(r"\D", "", mp.group(1)))
+        if prix > cfg["prix_max"]:
+            continue
+        mpi = re.search(r"(\d+)\s*pièces?", faits)
+        if mpi and cfg.get("pieces_max") and int(mpi.group(1)) > cfg["pieces_max"]:
+            continue
+        ms = re.search(r"(\d+(?:,\d+)?)\s*m²", faits)
+
+        results.append({
+            "id": f"superimmo-{c.get('data-public-id') or c.get('data-listing-id')}",
+            "titre": titre[:90],
+            "prix": prix,
+            "surface": float(ms.group(1).replace(",", ".")) if ms else None,
+            "ville": _ville_zone(zone, cp, ville_site),
+            "url": "https://www.superimmo.com" + lien["href"],
+            "source": "Superimmo",
+        })
+    return results, len(cartes)
+
+
+def provider_superimmo(cfg, zone, sf_cfg, garder, log, dev=False):
+    """Superimmo — agrégateur d'agences, 15 annonces par page."""
+    return _passage("superimmo", "Superimmo", _superimmo_annonces,
+                    cfg, zone, sf_cfg, garder, log, dev)
+
+
 PROVIDERS_SCRAPFLY = (
     ("Leboncoin", provider_leboncoin),
     ("PAP", provider_pap),
     ("SeLoger", provider_seloger),
     ("Logic-Immo", provider_logicimmo),
+    ("Entreparticuliers", provider_entreparticuliers),
+    ("Figaro", provider_figaro),
+    ("Superimmo", provider_superimmo),
 )

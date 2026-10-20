@@ -322,6 +322,42 @@
           "search_url": [
             "https://www.pap.fr/annonce/locations-appartement-rhone-69-g433-jusqu-a-650-euros"
           ]
+        },
+        "entreparticuliers": {
+          "enabled": true,
+          "heures": [
+            8,
+            13,
+            18
+          ],
+          "cout_max": 10,
+          "search_url": [
+            "https://www.entreparticuliers.com/annonces-immobilieres/location/appartement/rhone-69"
+          ]
+        },
+        "figaro": {
+          "enabled": true,
+          "heures": [
+            8,
+            13,
+            18
+          ],
+          "cout_max": 10,
+          "search_url": [
+            "https://immobilier.lefigaro.fr/annonces/immobilier-location-appartement-rhone.html?priceMax=650"
+          ]
+        },
+        "superimmo": {
+          "enabled": true,
+          "heures": [
+            8,
+            13,
+            18
+          ],
+          "cout_max": 10,
+          "search_url": [
+            "https://www.superimmo.com/location/appartement/rhone-alpes/rhone?sort=created_at&price_max=650"
+          ]
         }
       },
       "notif_titre": "Logement",

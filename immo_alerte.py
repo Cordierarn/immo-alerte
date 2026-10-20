@@ -16,6 +16,8 @@ Providers payants via Scrapfly (anti-bot, cadence et budget encadrés) :
                  Cloudflare bloque l'accès direct (une requête départementale)
   - SeLoger    : 35 crédits par commune, limité aux communes prioritaires
   - Logic-Immo : une requête pour toute la zone
+  - Entreparticuliers, Figaro Immo, Superimmo : Cloudflare, mais 1 crédit
+                 la page départementale
 
 Usage :
   python immo_alerte.py            # un passage (à planifier toutes les 15 min)
@@ -125,8 +127,9 @@ def est_demande(titre):
 
 # Qui gagne quand la même annonce sort de plusieurs sites : on garde la
 # source la plus utile (particuliers d'abord, lien direct, pas de frais).
-ORDRE_SOURCES = {"Leboncoin": 0, "PAP": 1, "ParuVendu": 2, "Immojeune": 3,
-                 "Bien'ici": 4, "SeLoger": 5, "Logic-Immo": 6}
+ORDRE_SOURCES = {"Leboncoin": 0, "PAP": 1, "Entreparticuliers": 2,
+                 "ParuVendu": 3, "Immojeune": 4, "Bien'ici": 5, "SeLoger": 6,
+                 "Logic-Immo": 7, "Figaro Immo": 8, "Superimmo": 9}
 
 
 def empreinte(annonce):
@@ -149,7 +152,7 @@ def empreinte(annonce):
 
 def rapprocher(annonces):
     """Fusionne les annonces identiques venant de sites différents."""
-    annonces.sort(key=lambda a: ORDRE_SOURCES.get(a["source"], 9))
+    annonces.sort(key=lambda a: ORDRE_SOURCES.get(a["source"], 99))
     par_empreinte, uniques = {}, []
     for a in annonces:
         emp = empreinte(a)

@@ -26,6 +26,8 @@ GitHub Actions — 8h, 10h, 12h, 13h, 15h, 18h, 20h (heure de Paris)
         ├── PAYANT ── Leboncoin  (Scrapfly + ASP, DataDome)
         │             PAP        (Scrapfly + ASP, Cloudflare)
         │             SeLoger    (Scrapfly + ASP, communes prioritaires)
+        │             Entreparticuliers, Figaro Immo, Superimmo
+        │                        (Scrapfly + ASP, Cloudflare, 1 cr/page)
         │                  ▲
         │                  └── 3 garde-fous : créneaux horaires, enveloppe
         │                      mensuelle, réserve de crédits du compte
@@ -186,8 +188,14 @@ tous les topics connus, et un appui sur la notification ouvre l'annonce.
 | Leboncoin | ✅ Scrapfly | 30 cr/appel | DataDome → ASP. Source la plus riche en particuliers |
 | PAP | ✅ Scrapfly | 40-80 cr/appel | Cloudflare. **Une seule requête départementale** (voir plus bas) |
 | SeLoger | ✅ Scrapfly | 35 cr × 7 URL | DataDome. Une URL par commune + une pour Lyon entier |
+| Entreparticuliers | ✅ Scrapfly | 1 cr/appel | Cloudflare. 100 % particuliers, page départementale (meublé non filtrable, voir plus bas) |
+| Figaro Immo | ✅ Scrapfly | 1 cr/appel | Cloudflare. Agrégateur d'agences, ~15 nouveautés/jour ≤ 650 € dans le Rhône |
+| Superimmo | ✅ Scrapfly | 1 cr/appel | Cloudflare. Agrégateur d'agences, meublé/colocation affichés en clair |
 | Logic-Immo | ❌ | — | Tourne sur la plateforme SeLoger : même stock, payé deux fois |
-| Avendrealouer | ❌ | — | DataDome aussi, apport marginal sur la zone |
+| Avendrealouer | ❌ | — | Redirige désormais vers Leboncoin : stock déjà couvert |
+| Rentola | ❌ | — | Agrégateur à abonnement payant, recopie les autres portails |
+| Spotahome / HousingAnywhere | ❌ | — | Quasi exclusivement des chambres en colocation, ≥ 660 € |
+| Orpi / Studapart | ❌ | — | Annonces chargées en JavaScript (render_js = +5 cr), stock d'agences déjà repris par Figaro/Bien'ici |
 | Studapart / Lokaviz | ❌ | — | Connexion obligatoire avant toute recherche |
 
 Le raisonnement : sur une recherche T1/T2 meublé ≤ 650 €, **Leboncoin reste la
@@ -240,6 +248,33 @@ mis au jour deux choses :
 D'où la forme actuelle : une seule URL, `g433` (Rhône), et c'est le filtrage
 par code postal de `zone.py` qui fait le tri. Le coût observé varie de 40 à 80
 crédits selon la difficulté du challenge, d'où un `cout_max` à 90.
+
+### Les sources à 1 crédit
+
+Entreparticuliers, Figaro Immo et Superimmo répondent `403` en direct
+(Cloudflare), mais l'ASP de Scrapfly les passe **sans escalade** : mesuré à
+1 crédit la page, contre 30 à 40 pour Leboncoin ou SeLoger. Trois sites à
+3 passages par jour coûtent donc moins de 300 crédits par mois.
+
+Chacun se contente d'une page **départementale** (Rhône) triée par date, et
+le code postal fait le tri, comme pour PAP :
+
+- **Entreparticuliers** : une quinzaine d'annonces pour tout le Rhône. La
+  carte ne dit pas si le logement est meublé et la page de détail coûterait un
+  appel par annonce, donc le critère `meuble` n'est **pas** appliqué : mieux
+  vaut un non-meublé de trop qu'un meublé de particulier manqué.
+- **Figaro Immo** : le JSON-LD n'a pas les prix, mais le `__NUXT_DATA__`
+  embarque la réponse complète de l'API (prix, pièces, code postal,
+  coordonnées, description). Le meublé se lit dans la description, en
+  écartant « non meublé » ; les types `chambre` et l'option `colocation` sont
+  exclus.
+- **Superimmo** : 15 annonces par page, avec « Meublé » et « Colocation »
+  affichés en clair sur la carte.
+
+Les deux derniers reprennent surtout des annonces d'agences déjà vues
+ailleurs. Le rapprochement inter-sites (ville + prix + surface) les fusionne,
+et ils arrivent en fin d'`ORDRE_SOURCES` pour que le lien gardé soit celui de
+la source d'origine.
 
 ## Budget Scrapfly
 
