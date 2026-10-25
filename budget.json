@@ -1,32 +1,32 @@
 {
-  "appels": 939,
-  "credits": 26425,
+  "appels": 963,
+  "credits": 26858,
   "dernier_appel": {
-    "coloc:figaro": 1792926150.5264935,
-    "coloc:lacartedescolocs": 1792926165.988701,
-    "coloc:leboncoin": 1792926148.6350956,
-    "coloc:superimmo": 1792926152.1347437,
-    "entreparticuliers": 1792926113.6000574,
-    "figaro": 1792926115.8839393,
-    "leboncoin": 1792926046.411127,
-    "pap": 1792926060.659589,
-    "parking:leboncoin": 1792926173.3284247,
-    "seloger": 1792926107.5798762,
-    "superimmo": 1792926119.0663974
+    "coloc:figaro": 1792940195.3063912,
+    "coloc:lacartedescolocs": 1792940209.914166,
+    "coloc:leboncoin": 1792940193.3757627,
+    "coloc:superimmo": 1792940196.7575076,
+    "entreparticuliers": 1792940159.0450375,
+    "figaro": 1792940161.6143708,
+    "leboncoin": 1792940084.8130538,
+    "pap": 1792940094.6175737,
+    "parking:leboncoin": 1792940217.2477016,
+    "seloger": 1792940157.1974795,
+    "superimmo": 1792940163.2509394
   },
   "mois": "2026-10",
   "par_provider": {
-    "coloc:figaro": 20,
-    "coloc:lacartedescolocs": 160,
-    "coloc:leboncoin": 500,
-    "coloc:superimmo": 20,
-    "entreparticuliers": 20,
-    "figaro": 20,
-    "leboncoin": 2070,
-    "pap": 5040,
-    "parking:leboncoin": 1730,
-    "seloger": 16825,
-    "superimmo": 20
+    "coloc:figaro": 21,
+    "coloc:lacartedescolocs": 168,
+    "coloc:leboncoin": 525,
+    "coloc:superimmo": 21,
+    "entreparticuliers": 21,
+    "figaro": 21,
+    "leboncoin": 2100,
+    "pap": 5120,
+    "parking:leboncoin": 1755,
+    "seloger": 17085,
+    "superimmo": 21
   },
-  "restant_compte": 156218
+  "restant_compte": 155794
 }
