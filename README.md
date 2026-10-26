@@ -307,6 +307,35 @@ ailleurs. Le rapprochement inter-sites (ville + prix + surface) les fusionne,
 et ils arrivent en fin d'`ORDRE_SOURCES` pour que le lien gardé soit celui de
 la source d'origine.
 
+### Les sites d'agences (`providers_agences.py`)
+
+Un provider **générique** : chaque site est décrit dans la clé `agences` de
+`config.json` (URL paginée, sélecteur CSS de la carte), et l'extraction
+(loyer, surface, pièces, code postal, meublé) est commune. Ajouter une
+agence, c'est ajouter quelques lignes de configuration. Les recherches
+l'activent par `"agences": true`.
+
+Le choix des sites vient d'une mesure, pas d'une liste : les 275 annonces
+Bien'ici sous 700 € de la zone viennent de **85 agences**, dont presque
+toutes les petites régies lyonnaises (Galyo, Pedrini, Franchet, Lescuyer,
+Centrale Immobilière, Bayard...). Elles sont donc déjà couvertes. Les grands
+réseaux, eux, en sont absents : ce sont leurs sites qui apportent du stock
+neuf.
+
+| Site | Pages lues | Meublé lu sur |
+|---|---|---|
+| Century 21 | 8 communes de la zone | la fiche |
+| Oralia | Rhône, ~33 pages | la fiche (champ « Meublé Oui/Non ») |
+| Square Habitat | Rhône | la fiche |
+| Location Etudiant | Lyon + Villeurbanne, ~17 pages | la fiche |
+
+Leurs filtres d'URL (prix, type) sont appliqués en JavaScript et ignorés
+d'un simple GET : on lit toutes les pages et on filtre en local. Quand seule
+la fiche dit si le bien est meublé, elle n'est ouverte que pour les
+candidats qui passent déjà tous les autres filtres, et le verdict est mis en
+cache dans `geo_cache.json`. Piège rencontré : ces fiches portent un champ
+« Meublé Non », que la simple recherche du mot prenait pour un oui.
+
 ### Le cas Leboncoin (octobre 2026)
 
 « Je vois des annonces sur le site qui ne sortent pas en notification. »

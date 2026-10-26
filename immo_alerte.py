@@ -43,6 +43,7 @@ from pathlib import Path
 import requests
 from bs4 import BeautifulSoup
 
+import providers_agences
 import providers_gratuits
 import zone as zone_mod
 
@@ -465,6 +466,7 @@ def passage(cfg, init_mode, dev_mode, gratuit_seul):
     annonces = []
     gratuits = [("Bien'ici", provider_bienici)]
     gratuits += list(providers_gratuits.PROVIDERS_GRATUITS)
+    gratuits += list(providers_agences.PROVIDERS_AGENCES)
     for name, provider in gratuits:
         try:
             found = provider(cfg, zone, garder, log)

@@ -366,7 +366,8 @@
         }
       },
       "notif_titre": "Logement",
-      "notif_tag": "house"
+      "notif_tag": "house",
+      "agences": true
     },
     {
       "nom": "coloc",
@@ -693,7 +694,8 @@
       },
       "notif_titre": "Coloc",
       "notif_tag": "busts_in_silhouette",
-      "ntfy_topic_env": "NTFY_TOPIC_COLOC"
+      "ntfy_topic_env": "NTFY_TOPIC_COLOC",
+      "agences": true
     },
     {
       "nom": "parking",
@@ -759,6 +761,66 @@
       "notif_titre": "Parking",
       "notif_tag": "parking",
       "ntfy_topic_env": "NTFY_TOPIC_PARKING"
+    }
+  ],
+  "agences": [
+    {
+      "nom": "Century 21",
+      "urls": [
+        "https://www.century21.fr/annonces/f/location/v-lyon/",
+        "https://www.century21.fr/annonces/f/location/v-lyon/page-{page}/",
+        "https://www.century21.fr/annonces/f/location/v-villeurbanne/",
+        "https://www.century21.fr/annonces/f/location/v-villeurbanne/page-{page}/",
+        "https://www.century21.fr/annonces/f/location/v-venissieux/",
+        "https://www.century21.fr/annonces/f/location/v-venissieux/page-{page}/",
+        "https://www.century21.fr/annonces/f/location/v-bron/",
+        "https://www.century21.fr/annonces/f/location/v-bron/page-{page}/",
+        "https://www.century21.fr/annonces/f/location/v-saint-priest/",
+        "https://www.century21.fr/annonces/f/location/v-saint-priest/page-{page}/",
+        "https://www.century21.fr/annonces/f/location/v-vaulx-en-velin/",
+        "https://www.century21.fr/annonces/f/location/v-vaulx-en-velin/page-{page}/",
+        "https://www.century21.fr/annonces/f/location/v-caluire-et-cuire/",
+        "https://www.century21.fr/annonces/f/location/v-caluire-et-cuire/page-{page}/",
+        "https://www.century21.fr/annonces/f/location/v-oullins/",
+        "https://www.century21.fr/annonces/f/location/v-oullins/page-{page}/"
+      ],
+      "page_debut": 2,
+      "pages": 2,
+      "carte": "div.c-the-property-thumbnail-with-content__col-right",
+      "base": "https://www.century21.fr",
+      "meuble": "detail",
+      "lien": "a[href*='/trouver_logement/detail/']"
+    },
+    {
+      "nom": "Oralia",
+      "urls": [
+        "https://oralia.fr/location/nos-biens-a-louer/auvergne-rhone-alpes/rhone-69?page={page}"
+      ],
+      "pages": 36,
+      "carte": "a.estate-item__link",
+      "base": "https://oralia.fr",
+      "meuble": "detail"
+    },
+    {
+      "nom": "Square Habitat",
+      "urls": [
+        "https://www.squarehabitat.fr/annonces/location/bien/appartement/immobilier/auvergne-rhone-alpes/rhone-69?page={page}"
+      ],
+      "pages": 6,
+      "carte": "div.afc-padding-x-m-m.afc-padding-x-xs-s",
+      "base": "https://www.squarehabitat.fr",
+      "meuble": "detail"
+    },
+    {
+      "nom": "Location Etudiant",
+      "urls": [
+        "https://www.location-etudiant.fr/logement-etudiant/Lyon-69123.html?pge={page}",
+        "https://www.location-etudiant.fr/logement-etudiant/Villeurbanne-69266.html?pge={page}"
+      ],
+      "pages": 18,
+      "carte": "div.div-residence-sur",
+      "base": "https://www.location-etudiant.fr",
+      "meuble": "detail"
     }
   ]
 }
