@@ -54,7 +54,7 @@ d'annonces vues et son topic de notification :
 
 | Recherche | Quoi | Où | Budget |
 |---|---|---|---|
-| `logement` | T1/T2 meublé | 33 communes à 45 min en TCL de Saint-Priest | ≤ 650 €/mois |
+| `logement` | T1/T2 meublé | 15 communes : Lyon, Villeurbanne et l'est proche de Saint-Priest | ≤ 650 €/mois |
 | `coloc` | Chambre en colocation | Même zone que le logement | ≤ 650 €/mois |
 | `parking` | Place ou garage | 1 km autour du 6 place de l'Hôtel de Ville, Saint-Étienne | ≤ 100 €/mois |
 
@@ -132,8 +132,14 @@ qui confirme l'intérêt de payer pour cette source.
 
 ### La zone (`villes` + `zone.py`)
 
-La zone couvre **33 communes à moins de 45 min en transports en commun** du
-Parc Technologique de Saint-Priest (terminus du T2), Lyon 1er à 9e inclus.
+La zone couvre **15 communes** autour du Parc Technologique de Saint-Priest
+(terminus du T2) : Lyon 1er à 9e, Villeurbanne, Vaulx-en-Velin,
+Décines-Charpieu, Saint-Priest, Bron et Vénissieux.
+
+Elle en comptait 33, toutes à moins de 45 min en transports en commun. Les 18
+plus éloignées de Lyon (Caluire, Oullins, Meyzieu, Mions, Corbas, Feyzin...)
+ont été retirées en octobre 2026 : elles pesaient 8 % des annonces logement
+vues et 3 % des colocs.
 
 Chaque entrée porte son ou ses codes postaux :
 
@@ -215,14 +221,14 @@ tous les topics connus, et un appui sur la notification ouvre l'annonce.
 | ParuVendu | ✅ intégré | 0 | Beaucoup de particuliers, HTML servi tel quel |
 | Leboncoin | ✅ Scrapfly | 30 cr/appel | DataDome → ASP. Source la plus riche en particuliers |
 | PAP | ✅ Scrapfly | 40-80 cr/appel | Cloudflare. **Une seule requête départementale** (voir plus bas) |
-| SeLoger | ✅ Scrapfly | 35 cr × 7 URL | DataDome. Une URL par commune + une pour Lyon entier |
+| SeLoger | ✅ Scrapfly | 35 cr × 4 URL | DataDome. Une URL par commune + une pour Lyon entier |
 | Entreparticuliers | ✅ Scrapfly | 1 cr/appel | Cloudflare. 100 % particuliers, page départementale (meublé non filtrable, voir plus bas) |
 | Figaro Immo | ✅ Scrapfly | 1 cr/appel | Cloudflare. Agrégateur d'agences, ~15 nouveautés/jour ≤ 650 € dans le Rhône |
 | Superimmo | ✅ Scrapfly | 1 cr/appel | Cloudflare. Agrégateur d'agences, meublé/colocation affichés en clair |
 | Logic-Immo | ❌ | — | Tourne sur la plateforme SeLoger : même stock, payé deux fois |
 | Avendrealouer | ❌ | — | Redirige désormais vers Leboncoin : stock déjà couvert |
 | Rentola | ❌ | — | Agrégateur à abonnement payant, recopie les autres portails |
-| La Carte des Colocs | ✅ Scrapfly (coloc) | 1 cr × 8 communes | Cloudflare. Le site de référence, 30 annonces par commune |
+| La Carte des Colocs | ✅ Scrapfly (coloc) | 1 cr × 6 communes | Cloudflare. Le site de référence, 30 annonces par commune |
 | HousingAnywhere | ✅ intégré (coloc) | 0 | Chambres meublées, banlieue est ~450 €. Bloque `requests`, servi à urllib |
 | Spotahome | ✅ intégré (coloc) | 0 | Chambres meublées vérifiées, budget filtré côté serveur |
 | Appartager | ✅ intégré (coloc) | 0 | Beaucoup de particuliers, code postal sur chaque carte |
@@ -273,7 +279,7 @@ mis au jour deux choses :
   « Bron », sert en réalité les annonces de *Charentay* (69220), un village à
   40 km. PAP interrogeait donc les mauvaises communes bien avant le blocage.
 - **La page départementale coûte moitié moins que la page communale** (40
-  crédits contre 80) tout en couvrant les 33 communes d'un coup. Le stock de
+  crédits contre 80) tout en couvrant toute la zone d'un coup. Le stock de
   PAP sous 650 € tient largement sur une page.
 
 D'où la forme actuelle : une seule URL, `g433` (Rhône), et c'est le filtrage
@@ -324,7 +330,7 @@ neuf.
 
 | Site | Pages lues | Meublé lu sur |
 |---|---|---|
-| Century 21 | 8 communes de la zone | la fiche |
+| Century 21 | 6 communes de la zone | la fiche |
 | Oralia | Rhône, ~33 pages | la fiche (champ « Meublé Oui/Non ») |
 | Square Habitat | Rhône | la fiche |
 | Location Etudiant | Lyon + Villeurbanne, ~17 pages | la fiche |
@@ -410,9 +416,9 @@ demandes déguisées en offres (« Recherche studio sur Lyon » arrive avec
    c'est ce qui garantit que la veille immo n'assèche pas l'autre projet.
 
 Projection : **~6 300 crédits/mois** pour Leboncoin (7 passages/jour, 30 cr),
-**~22 050** pour SeLoger (3 passages/jour × 7 URL × 35 cr) et **~5 400** pour
+**~12 600** pour SeLoger (3 passages/jour × 4 URL × 35 cr) et **~5 400** pour
 PAP (3 passages/jour, ~60 cr en moyenne). La veille parking ajoute **~2 700**
-(Leboncoin, 3 passages/jour × 30 cr), soit **~36 450 au total, 22 % du
+(Leboncoin, 3 passages/jour × 30 cr), soit **~27 000 au total, 16 % du
 quota**.
 
 Les cadences des deux veilles sont suivies séparément (`parking:leboncoin` et
