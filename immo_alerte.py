@@ -184,6 +184,13 @@ def marque_source(emp, annonce):
     return f"{emp}@{annonce['source']}"
 
 
+def est_connue(annonce, seen):
+    """Déjà vue : même identifiant, ou jumelle d'une annonce d'un AUTRE site."""
+    emp = empreinte(annonce)
+    return annonce["id"] in seen or (emp is not None and emp in seen
+                                     and marque_source(emp, annonce) not in seen)
+
+
 def rapprocher(annonces):
     """Fusionne les annonces identiques venant de sites différents."""
     annonces.sort(key=lambda a: ORDRE_SOURCES.get(a["source"], 99))
@@ -497,8 +504,7 @@ def passage(cfg, init_mode, dev_mode, gratuit_seul):
     nouvelles = []
     for a in annonces:
         emp = empreinte(a)
-        if a["id"] in seen or (emp is not None and emp in seen
-                               and marque_source(emp, a) not in seen):
+        if est_connue(a, seen):
             # on mémorise l'empreinte même pour une annonce déjà connue : c'est
             # ce qui permet à un jumeau publié plus tard sur un autre site
             # d'être reconnu
