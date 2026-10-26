@@ -171,6 +171,18 @@ def empreinte(annonce):
     return f"emp:{zone_mod._norm(ville)}|{prix}|{round(surface)}"
 
 
+def marque_source(emp, annonce):
+    """L'empreinte vue SUR CE SITE.
+
+    Une empreinte connue ne vaut doublon que si elle vient d'un autre site.
+    Sur le même site, la collision réunit deux identifiants distincts : deux
+    logements différents (mesuré : 9 annonces Leboncoin sur 20 absorbées en
+    une semaine, dont un studio du 6e pris pour un studio du 7e), ou au pire
+    une republication. Dans le doute on notifie.
+    """
+    return f"{emp}@{annonce['source']}"
+
+
 def rapprocher(annonces):
     """Fusionne les annonces identiques venant de sites différents."""
     annonces.sort(key=lambda a: ORDRE_SOURCES.get(a["source"], 99))
@@ -178,7 +190,9 @@ def rapprocher(annonces):
     for a in annonces:
         emp = empreinte(a)
         garde = par_empreinte.get(emp) if emp else None
-        if garde is not None:
+        # deux annonces d'un MÊME site ont deux identifiants : deux chambres
+        # d'une même résidence au même prix, pas un doublon
+        if garde is not None and garde["source"] != a["source"]:
             if a["source"] not in garde["aussi"]:
                 garde["aussi"].append(a["source"])
             continue
@@ -480,13 +494,14 @@ def passage(cfg, init_mode, dev_mode, gratuit_seul):
     nouvelles = []
     for a in annonces:
         emp = empreinte(a)
-        if a["id"] in seen or (emp is not None and emp in seen):
+        if a["id"] in seen or (emp is not None and emp in seen
+                               and marque_source(emp, a) not in seen):
             # on mémorise l'empreinte même pour une annonce déjà connue : c'est
             # ce qui permet à un jumeau publié plus tard sur un autre site
             # d'être reconnu
             seen.add(a["id"])
             if emp:
-                seen.add(emp)
+                seen.update((emp, marque_source(emp, a)))
         else:
             nouvelles.append(a)
 
@@ -500,7 +515,7 @@ def passage(cfg, init_mode, dev_mode, gratuit_seul):
         seen.add(a["id"])
         emp = empreinte(a)
         if emp:
-            seen.add(emp)
+            seen.update((emp, marque_source(emp, a)))
     save_seen(cfg, seen)
 
     if init_mode:

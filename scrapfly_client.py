@@ -40,6 +40,12 @@ BASE = Path(__file__).parent
 LEDGER_FILE = BASE / "budget.json"
 
 
+# Pages déjà récupérées pendant ce passage. Deux veilles peuvent viser la
+# même URL (Leboncoin Locations : le logement y prend les studios, la coloc
+# les chambres) : la seconde relit la page au lieu de la repayer.
+_DEJA_SCRAPE = {}
+
+
 class BudgetEpuise(Exception):
     """Plus de crédits disponibles pour ce projet : on ne scrape pas."""
 
@@ -194,6 +200,13 @@ def scrape(url, *, provider, cfg, log=print,
         if not ok:
             raise TropTot(raison)
 
+    cle = (url, asp, render_js, country)
+    if cle in _DEJA_SCRAPE:
+        led["dernier_appel"][provider] = time.time()
+        sauver_ledger(led)
+        log(f"  Scrapfly [{provider}] page déjà récupérée ce passage — 0 crédit")
+        return dict(_DEJA_SCRAPE[cle], cost=0)
+
     # --- garde-fou 2 : enveloppe mensuelle du projet
     enveloppe = cfg.get("budget_mensuel", 150000)
     plafond_req = cost_budget or cfg.get("cout_max_par_requete", 35)
@@ -265,8 +278,10 @@ def scrape(url, *, provider, cfg, log=print,
         f" — cumul mois {led['credits']}/{enveloppe}"
         + (f", compte {led['restant_compte']}" if led.get("restant_compte") else ""))
 
-    return {"content": contenu, "status_code": statut, "cost": cout,
-            "url": result.get("url", url), "cache_hit": cache_hit}
+    res = {"content": contenu, "status_code": statut, "cost": cout,
+           "url": result.get("url", url), "cache_hit": cache_hit}
+    _DEJA_SCRAPE[cle] = res
+    return res
 
 
 # ---------------------------------------------------------------- Rapport

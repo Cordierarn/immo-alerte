@@ -307,6 +307,30 @@ ailleurs. Le rapprochement inter-sites (ville + prix + surface) les fusionne,
 et ils arrivent en fin d'`ORDRE_SOURCES` pour que le lien gardé soit celui de
 la source d'origine.
 
+### Le cas Leboncoin (octobre 2026)
+
+« Je vois des annonces sur le site qui ne sortent pas en notification. »
+Mesuré sur une page de 35 annonces et une semaine de journaux : le scraping
+ne perdait rien (tous les appels en 200, page 1 couvrant ~3 jours de
+remontées), ce sont trois filtres qui jetaient de bonnes annonces.
+
+- **Le rapprochement absorbait des annonces distinctes** : 9 annonces
+  récentes sur 20 marquées vues sans jamais avoir été notifiées. Leboncoin
+  écrit « Lyon » sans arrondissement, si bien qu'un studio du 6e à
+  600 €/22 m² passait pour le doublon d'un studio du 7e notifié la semaine
+  d'avant. La ville est désormais déduite du code postal (`Lyon 6e`), et une
+  empreinte ne vaut doublon que si elle vient d'un **autre** site (marque
+  `emp:…@Source` dans la mémoire) : deux identifiants d'un même site sont
+  deux annonces.
+- **`real_estate_type` était trop strict** : des particuliers classent leur
+  studio en « maison » (1) ou « autre » (5). Le logement accepte `[1, 2, 5]`,
+  les bureaux et garages restant écartés par `mots_exclus_titre`.
+- **Les « Chambre 1 pièce 10 m² » de la catégorie Locations** n'étaient vues
+  par personne : le logement les écarte comme colocs, et la coloc ne lisait
+  que la catégorie Colocations. Elle lit maintenant les deux ; la page
+  Locations est partagée avec le logement dans le même passage (0 crédit,
+  `_DEJA_SCRAPE` dans `scrapfly_client.py`).
+
 ## Budget Scrapfly
 
 Plan Discovery : 200 000 crédits/mois, **plafond dur** (pas de dépassement

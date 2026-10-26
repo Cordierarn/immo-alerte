@@ -147,36 +147,25 @@ def _attr(ad, cle):
     return None
 
 
-def provider_leboncoin(cfg, zone, sf_cfg, garder, log, dev=False):
-    """Leboncoin — la seule source réellement irremplaçable (particuliers).
-
-    DataDome : ASP obligatoire, ~25-30 crédits par appel. On n'en fait qu'un.
-    """
-    p = (sf_cfg.get("providers") or {}).get("leboncoin") or {}
-    if not p.get("enabled"):
-        return []
-    url = p.get("search_url")
-    if not url:
-        log("  Leboncoin: 'search_url' absente de config.json, provider ignoré")
-        return []
-
-    res = scrape(url, provider=_tag(sf_cfg, "leboncoin"), cfg=sf_cfg, log=log,
-                 asp=True, render_js=False, country="fr",
-                 cadence=p.get("cadence"),
-                 cost_budget=p.get("cout_max"),
-                 # en dev on rejoue la même requête à volonté pour 0 crédit
-                 cache=dev, cache_ttl=3600,
-                 ignorer_cadence=dev)
-
-    data = _next_data(res["content"])
+def _lbc_annonces(html, cfg, zone, garder, p):
+    data = _next_data(html)
     if not data:
-        _dump_debug("leboncoin", res["content"], log)
-        return []
-
+        return None
     pp = (data.get("props") or {}).get("pageProps") or {}
     ads = ((pp.get("searchData") or {}).get("ads")
            or ((pp.get("initialProps") or {}).get("searchData") or {}).get("ads")
            or [])
+
+    # Leboncoin applique bien 'furnished' et 'rooms' de l'URL, mais IGNORE
+    # 'real_estate_type' : on reçoit de tout. On refiltre donc en local.
+    # 1 = maison, 2 = appartement, 3 = terrain, 4 = parking, 5 = autre.
+    # Une liste est acceptée : les particuliers classent volontiers leur
+    # studio en « maison » ou « autre » (mesuré : 2 studios sur 35 écartés à
+    # tort quand seul 2 était admis). null pour la catégorie Colocations,
+    # dont les annonces ne portent pas ce champ.
+    attendu = p.get("real_estate_type", "2")
+    types = ({str(t) for t in attendu} if isinstance(attendu, list)
+             else {str(attendu)} if attendu else None)
 
     results = []
     for ad in ads:
@@ -196,14 +185,7 @@ def provider_leboncoin(cfg, zone, sf_cfg, garder, log, dev=False):
         if prix is None or prix > cfg["prix_max"]:
             continue
 
-        # Leboncoin applique bien 'furnished' et 'rooms' de l'URL, mais IGNORE
-        # 'real_estate_type' : on reçoit des maisons (1) et des bureaux/locaux
-        # (5) au milieu des appartements. On refiltre donc en local, c'est
-        # gratuit et ça évite les notifications parasites.
-        # 2 = appartement, 4 = parking/garage. null dans config.json pour la
-        # catégorie Colocations, dont les annonces ne portent pas ce champ.
-        attendu = p.get("real_estate_type", "2")
-        if attendu and _attr(ad, "real_estate_type") != str(attendu):
+        if types and _attr(ad, "real_estate_type") not in types:
             continue
         pieces = _attr(ad, "rooms")
         if pieces and cfg.get("pieces_max") and int(pieces) > cfg["pieces_max"]:
@@ -225,11 +207,47 @@ def provider_leboncoin(cfg, zone, sf_cfg, garder, log, dev=False):
             "titre": titre[:90],
             "prix": prix,
             "surface": float(surface) if surface else None,
-            "ville": loc.get("city", ""),
+            # « Lyon » tout court pour les neuf arrondissements : l'empreinte
+            # confondait un studio du 6e avec un du 7e au même prix et à la
+            # même surface, et le second n'était jamais notifié. Le code
+            # postal rend l'arrondissement.
+            "ville": _ville_zone(zone, loc.get("zipcode"), loc.get("city", "")),
             "url": ad.get("url") or f"https://www.leboncoin.fr/ad/locations/{ad.get('list_id')}",
             "source": "Leboncoin",
             "distance": zone.distance(lat, lon),
         })
+    return results
+
+
+def provider_leboncoin(cfg, zone, sf_cfg, garder, log, dev=False):
+    """Leboncoin — la seule source réellement irremplaçable (particuliers).
+
+    DataDome : ASP obligatoire, ~25-30 crédits par appel. Une URL suffit
+    d'ordinaire ; la veille coloc en a deux (catégories Colocations et
+    Locations, où se cachent les « Chambre 1 pièce 10 m² »).
+    """
+    p = (sf_cfg.get("providers") or {}).get("leboncoin") or {}
+    if not p.get("enabled"):
+        return []
+    urls = _urls(p)
+    if not urls:
+        log("  Leboncoin: 'search_url' absente de config.json, provider ignoré")
+        return []
+
+    results = []
+    for i, url in enumerate(urls):
+        res = scrape(url, provider=_tag(sf_cfg, "leboncoin"), cfg=sf_cfg, log=log,
+                     asp=True, render_js=False, country="fr",
+                     cadence=p.get("cadence"),
+                     cost_budget=p.get("cout_max"),
+                     # en dev on rejoue la même requête à volonté pour 0 crédit
+                     cache=dev, cache_ttl=3600,
+                     ignorer_cadence=dev or i > 0)
+        trouves = _lbc_annonces(res["content"], cfg, zone, garder, p)
+        if trouves is None:
+            _dump_debug(f"leboncoin{i}", res["content"], log)
+            continue
+        results.extend(trouves)
     return results
 
 

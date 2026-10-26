@@ -280,7 +280,12 @@
       "providers": {
         "leboncoin": {
           "enabled": true,
-          "search_url": "https://www.leboncoin.fr/recherche?category=10&real_estate_type=2&locations=Saint-Priest_69800,Bron_69500,V%C3%A9nissieux_69200,Chassieu_69680,Mions_69780,Corbas_69960,Lyon_69008,Lyon_69003,Lyon_69007,Lyon_69006,Lyon_69002,Lyon_69001,Lyon_69004,Lyon_69005,Lyon_69009,Villeurbanne_69100,Saint-Fons_69190,Feyzin_69320,Vaulx-en-Velin_69120,D%C3%A9cines-Charpieu_69150,Meyzieu_69330,Genas_69740,Oullins-Pierre-B%C3%A9nite_69600,Saint-Genis-Laval_69230,Caluire-et-Cuire_69300,Saint-Bonnet-de-Mure_69720,Saint-Laurent-de-Mure_69720,Toussieu_69780,Saint-Pierre-de-Chandieu_69780,Jonage_69330,Pusignan_69330,Chaponnay_69970&price=min-650&rooms=1-2&furnished=1&sort=time&order=desc"
+          "search_url": "https://www.leboncoin.fr/recherche?category=10&real_estate_type=2&locations=Saint-Priest_69800,Bron_69500,V%C3%A9nissieux_69200,Chassieu_69680,Mions_69780,Corbas_69960,Lyon_69008,Lyon_69003,Lyon_69007,Lyon_69006,Lyon_69002,Lyon_69001,Lyon_69004,Lyon_69005,Lyon_69009,Villeurbanne_69100,Saint-Fons_69190,Feyzin_69320,Vaulx-en-Velin_69120,D%C3%A9cines-Charpieu_69150,Meyzieu_69330,Genas_69740,Oullins-Pierre-B%C3%A9nite_69600,Saint-Genis-Laval_69230,Caluire-et-Cuire_69300,Saint-Bonnet-de-Mure_69720,Saint-Laurent-de-Mure_69720,Toussieu_69780,Saint-Pierre-de-Chandieu_69780,Jonage_69330,Pusignan_69330,Chaponnay_69970&price=min-650&rooms=1-2&furnished=1&sort=time&order=desc",
+          "real_estate_type": [
+            "1",
+            "2",
+            "5"
+          ]
         },
         "seloger": {
           "enabled": true,
@@ -636,7 +641,11 @@
           ],
           "cout_max": 35,
           "real_estate_type": null,
-          "search_url": "https://www.leboncoin.fr/recherche?category=11&locations=Saint-Priest_69800,Bron_69500,V%C3%A9nissieux_69200,Chassieu_69680,Mions_69780,Corbas_69960,Lyon_69008,Lyon_69003,Lyon_69007,Lyon_69006,Lyon_69002,Lyon_69001,Lyon_69004,Lyon_69005,Lyon_69009,Villeurbanne_69100,Saint-Fons_69190,Feyzin_69320,Vaulx-en-Velin_69120,D%C3%A9cines-Charpieu_69150,Meyzieu_69330,Genas_69740,Oullins-Pierre-B%C3%A9nite_69600,Saint-Genis-Laval_69230,Caluire-et-Cuire_69300,Saint-Bonnet-de-Mure_69720,Saint-Laurent-de-Mure_69720,Toussieu_69780,Saint-Pierre-de-Chandieu_69780,Jonage_69330,Pusignan_69330,Chaponnay_69970&price=min-650&sort=time&order=desc"
+          "search_url": [
+            "https://www.leboncoin.fr/recherche?category=11&locations=Saint-Priest_69800,Bron_69500,V%C3%A9nissieux_69200,Chassieu_69680,Mions_69780,Corbas_69960,Lyon_69008,Lyon_69003,Lyon_69007,Lyon_69006,Lyon_69002,Lyon_69001,Lyon_69004,Lyon_69005,Lyon_69009,Villeurbanne_69100,Saint-Fons_69190,Feyzin_69320,Vaulx-en-Velin_69120,D%C3%A9cines-Charpieu_69150,Meyzieu_69330,Genas_69740,Oullins-Pierre-B%C3%A9nite_69600,Saint-Genis-Laval_69230,Caluire-et-Cuire_69300,Saint-Bonnet-de-Mure_69720,Saint-Laurent-de-Mure_69720,Toussieu_69780,Saint-Pierre-de-Chandieu_69780,Jonage_69330,Pusignan_69330,Chaponnay_69970&price=min-650&sort=time&order=desc",
+            "https://www.leboncoin.fr/recherche?category=10&real_estate_type=2&locations=Saint-Priest_69800,Bron_69500,V%C3%A9nissieux_69200,Chassieu_69680,Mions_69780,Corbas_69960,Lyon_69008,Lyon_69003,Lyon_69007,Lyon_69006,Lyon_69002,Lyon_69001,Lyon_69004,Lyon_69005,Lyon_69009,Villeurbanne_69100,Saint-Fons_69190,Feyzin_69320,Vaulx-en-Velin_69120,D%C3%A9cines-Charpieu_69150,Meyzieu_69330,Genas_69740,Oullins-Pierre-B%C3%A9nite_69600,Saint-Genis-Laval_69230,Caluire-et-Cuire_69300,Saint-Bonnet-de-Mure_69720,Saint-Laurent-de-Mure_69720,Toussieu_69780,Saint-Pierre-de-Chandieu_69780,Jonage_69330,Pusignan_69330,Chaponnay_69970&price=min-650&rooms=1-2&furnished=1&sort=time&order=desc"
+          ],
+          "_note": "2e URL = celle du logement (categorie Locations) : ses « Chambre » n'etaient vues par aucune veille. Page partagee avec le logement quand les deux passent ensemble (0 credit)."
         },
         "lacartedescolocs": {
           "enabled": true,
