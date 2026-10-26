@@ -328,6 +328,20 @@ neuf.
 | Oralia | Rhône, ~33 pages | la fiche (champ « Meublé Oui/Non ») |
 | Square Habitat | Rhône | la fiche |
 | Location Etudiant | Lyon + Villeurbanne, ~17 pages | la fiche |
+| ERA | Auvergne-Rhône-Alpes, ~10 pages | la fiche |
+| Lodgis | Lyon (52 meublés) | tout est meublé |
+| Foncia | Lyon + Villeurbanne, pages « meublé » | la carte — **Scrapfly, 25 cr/page** |
+| Laforêt | Lyon + Villeurbanne | la carte — Scrapfly, 1 cr/page |
+
+Foncia et Laforêt sont derrière Cloudflare : `"scrapfly": {"heures", "cout_max"}`
+leur applique les garde-fous des autres providers payants. Foncia coûte cher
+(25 crédits la page) mais publie une page « appartement-meublé » par ville :
+deux pages suffisent, soit ~4 500 crédits par mois, pour un stock que rien
+d'autre ne couvre (5 meublés sous 650 € à la mise en service).
+
+Écartés après mesure : Sergic (aucun bien dans le Rhône), Stéphane Plaza
+(URL de recherche introuvable, Cloudflare), Orpi, Guy Hoquet et le Crous
+(résultats chargés en JavaScript, aucune donnée dans la page).
 
 Leurs filtres d'URL (prix, type) sont appliqués en JavaScript et ignorés
 d'un simple GET : on lit toutes les pages et on filtre en local. Quand seule

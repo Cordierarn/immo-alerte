@@ -26,6 +26,9 @@ Chaque site déclare :
            'detail' : seule la fiche le dit ; on l'ouvre pour les candidats
                       qui passent tous les autres filtres, verdict en cache
   coloc    true si le site ne fait que de la colocation
+  scrapfly {heures, cout_max} pour un site derrière Cloudflare/DataDome
+           (Foncia, Laforêt) : mêmes garde-fous que les autres providers
+           payants (créneaux, enveloppe, réserve du compte)
 
 Les filtres d'URL de ces sites (prix max, type) sont appliqués en JavaScript
 et ignorés d'un GET : on lit toutes les pages et on filtre en local.
@@ -105,6 +108,18 @@ def _meuble_sur_fiche(url, log):
     return verdict
 
 
+def _commune_nommee(zone, texte):
+    """Lodgis écrit « Lyon 7° » sans code postal : un segment de la carte
+    qui EST le nom d'une commune de la zone donne la ville (et donc une
+    empreinte comparable à celle des autres sites)."""
+    plats = [zone_mod._norm(seg) for seg in texte.split(" | ")]
+    # « Lyon » tout court figure aussi sur la carte : l'arrondissement d'abord
+    for c in sorted(zone.communes, key=lambda c: c.cp_only or c.nom_exact):
+        if any(p in c.noms_norm for p in plats):
+            return c.nom
+    return ""
+
+
 def _cartes(html, site, cfg, zone, garder, log):
     soup = BeautifulSoup(html, "html.parser")
     cartes = soup.select(site["carte"])
@@ -148,17 +163,22 @@ def _cartes(html, site, cfg, zone, garder, log):
 
         cps = [cp for cp in zone_mod.CP_RE.findall(texte) if cp in zone.cps]
         ms = SURFACE_RE.search(texte)
+        ville = zone.par_cp(cps[0]).nom if cps else _commune_nommee(zone, texte)
         results.append({
             "id": _ident(site, url),
             "titre": titre[:90],
             "prix": prix,
             "surface": float(ms.group(1).replace(",", ".")) if ms else None,
-            "ville": (zone.par_cp(cps[0]).nom if cps else ""),
+            "ville": ville,
             "url": url,
             "source": site["nom"],
         })
     return results, len(cartes)
 
+
+# la liste des sites est commune à toutes les recherches : elle vit à la
+# racine de config.json, chaque recherche ne fait que l'activer
+CONFIG = json.loads((Path(__file__).parent / "config.json").read_text(encoding="utf-8"))
 
 # pages lues pendant ce passage : logement et coloc parcourent les mêmes
 # sites, inutile de télécharger deux fois les 36 pages d'Oralia
@@ -170,6 +190,33 @@ def _lire(urls):
     for u, html in zip(manquantes, _get_tous(manquantes)):
         _LUES[u] = html
     return [_LUES[u] for u in urls]
+
+
+def _lire_scrapfly(urls, site, log):
+    """Même lecture, via Scrapfly. Le créneau est vérifié sur la première
+    URL seulement (les suivantes font partie du même passage), et une page
+    déjà lue par une autre recherche ne coûte rien."""
+    from scrapfly_client import BudgetEpuise, ScrapflyKO, TropTot, scrape
+    sf = dict(CONFIG.get("scrapfly") or {})
+    if not sf.get("enabled"):
+        return None
+    opts = site.get("scrapfly") or {}
+    pages = []
+    for i, u in enumerate(urls):
+        if u not in _LUES:
+            try:
+                _LUES[u] = scrape(u, provider=f"agence:{_slug(site['nom'])}", cfg=sf, log=log,
+                                  asp=True, render_js=False, country="fr",
+                                  cadence={"heures": opts["heures"]} if opts.get("heures") else None,
+                                  cost_budget=opts.get("cout_max"),
+                                  ignorer_cadence=i > 0)["content"]
+            except TropTot:
+                return None
+            except (BudgetEpuise, ScrapflyKO) as e:
+                log(f"  {site['nom']}: {e}")
+                _LUES[u] = None
+        pages.append(_LUES[u])
+    return pages
 
 
 def _pages(site):
@@ -189,16 +236,22 @@ def provider_agences(cfg, zone, garder, log):
     recherche qui l'active ('agences': true)."""
     if not cfg.get("agences"):
         return []
-    # la liste des sites est commune à toutes les recherches : elle vit à la
-    # racine de config.json, chaque recherche ne fait que l'activer
-    sites = json.loads((Path(__file__).parent / "config.json").read_text(encoding="utf-8")).get("agences") or []
+    sites = CONFIG.get("agences") or []
     results = []
     for site in sites:
         if not site.get("enabled", True):
             continue
-        trouves, vues, echecs = [], 0, 0
-        for urls in _pages(site):
-            for html in _lire(urls):
+        trouves, vues, echecs, attente = [], 0, 0, False
+        groupes = list(_pages(site))
+        if site.get("scrapfly"):
+            # un seul contrôle de créneau pour tout le site
+            groupes = [[u for g in groupes for u in g]]
+        for urls in groupes:
+            lues = _lire_scrapfly(urls, site, log) if site.get("scrapfly") else _lire(urls)
+            if lues is None:
+                attente = True
+                continue
+            for html in lues:
                 if html is None:
                     echecs += 1
                     continue
@@ -208,6 +261,9 @@ def provider_agences(cfg, zone, garder, log):
         # on ne déduplique que sur l'id : une même carte peut figurer sur
         # deux pages si le stock bouge pendant la lecture
         uniques = {a["id"]: a for a in trouves}
+        if attente and not vues:
+            log(f"  {site['nom']}: pas encore l'heure (créneau Scrapfly)")
+            continue
         log(f"  {site['nom']}: {len(uniques)} retenue(s) sur {vues} carte(s)"
             + (f", {echecs} page(s) injoignable(s)" if echecs else ""))
         if not vues and not echecs:

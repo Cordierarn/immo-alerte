@@ -821,6 +821,61 @@
       "carte": "div.div-residence-sur",
       "base": "https://www.location-etudiant.fr",
       "meuble": "detail"
+    },
+    {
+      "nom": "Foncia",
+      "urls": [
+        "https://fr.foncia.com/location/lyon-69/appartement-meuble",
+        "https://fr.foncia.com/location/villeurbanne-69100/appartement-meuble"
+      ],
+      "carte": "div.foncia-card-content-left",
+      "base": "https://fr.foncia.com",
+      "meuble": "carte",
+      "scrapfly": {
+        "heures": [
+          8,
+          13,
+          18
+        ],
+        "cout_max": 30
+      }
+    },
+    {
+      "nom": "Laforêt",
+      "urls": [
+        "https://www.laforet.com/ville/location-appartement-lyon-69000",
+        "https://www.laforet.com/ville/location-appartement-villeurbanne-69100"
+      ],
+      "carte": "a[href*='/louer/']",
+      "base": "https://www.laforet.com",
+      "meuble": "carte",
+      "scrapfly": {
+        "heures": [
+          8,
+          13,
+          18
+        ],
+        "cout_max": 10
+      }
+    },
+    {
+      "nom": "ERA",
+      "urls": [
+        "https://www.eraimmobilier.com/location-appartement/auvergne-rhone-alpes-16?page={page}"
+      ],
+      "pages": 12,
+      "carte": "div.annonce-card",
+      "base": "https://www.eraimmobilier.com",
+      "meuble": "detail"
+    },
+    {
+      "nom": "Lodgis",
+      "urls": [
+        "https://www.lodgis.com/fr/lyon,location-meublee/location-meuble-lyon_19606.cat.html"
+      ],
+      "carte": "div.card.card__appart",
+      "base": "https://www.lodgis.com",
+      "meuble": "tous"
     }
   ]
 }
