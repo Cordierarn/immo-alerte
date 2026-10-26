@@ -233,7 +233,8 @@ tous les topics connus, et un appui sur la notification ouvre l'annonce.
 | Spotahome | ✅ intégré (coloc) | 0 | Chambres meublées vérifiées, budget filtré côté serveur |
 | Appartager | ✅ intégré (coloc) | 0 | Beaucoup de particuliers, code postal sur chaque carte |
 | Locservice | ✅ intégré (agences) | 0 | Particuliers, ~440 meublés à Lyon, servi tel quel |
-| Orpi / Studapart | ❌ | — | Annonces chargées en JavaScript (render_js = +5 cr), stock d'agences déjà repris par Figaro/Bien'ici |
+| Orpi | ❌ | — | Servi en HTML depuis 2026, mais stock déjà repris par Bien'ici (~3 annonces neuves mesurées) |
+| Studapart | ❌ | — | Connexion obligatoire : la page publique ne liste que des résidences |
 | Studapart / Lokaviz | ❌ | — | Connexion obligatoire avant toute recherche |
 
 Le raisonnement : sur une recherche T1/T2 meublé ≤ 650 €, **Leboncoin reste la
