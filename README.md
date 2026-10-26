@@ -232,6 +232,7 @@ tous les topics connus, et un appui sur la notification ouvre l'annonce.
 | HousingAnywhere | ✅ intégré (coloc) | 0 | Chambres meublées, banlieue est ~450 €. Bloque `requests`, servi à urllib |
 | Spotahome | ✅ intégré (coloc) | 0 | Chambres meublées vérifiées, budget filtré côté serveur |
 | Appartager | ✅ intégré (coloc) | 0 | Beaucoup de particuliers, code postal sur chaque carte |
+| Locservice | ✅ intégré (agences) | 0 | Particuliers, ~440 meublés à Lyon, servi tel quel |
 | Orpi / Studapart | ❌ | — | Annonces chargées en JavaScript (render_js = +5 cr), stock d'agences déjà repris par Figaro/Bien'ici |
 | Studapart / Lokaviz | ❌ | — | Connexion obligatoire avant toute recherche |
 
@@ -338,6 +339,7 @@ neuf.
 | Lodgis | Lyon (52 meublés) | tout est meublé |
 | Foncia | Lyon + Villeurbanne, pages « meublé » | la carte — **Scrapfly, 25 cr/page** |
 | Laforêt | Lyon + Villeurbanne | la carte — Scrapfly, 1 cr/page |
+| Locservice | Lyon (10 pages) + page 1 des 6 autres communes | tout est meublé (pages « location-meublé ») |
 
 Foncia et Laforêt sont derrière Cloudflare : `"scrapfly": {"heures", "cout_max"}`
 leur applique les garde-fous des autres providers payants. Foncia coûte cher
@@ -345,9 +347,31 @@ leur applique les garde-fous des autres providers payants. Foncia coûte cher
 deux pages suffisent, soit ~4 500 crédits par mois, pour un stock que rien
 d'autre ne couvre (5 meublés sous 650 € à la mise en service).
 
-Écartés après mesure : Sergic (aucun bien dans le Rhône), Stéphane Plaza
-(URL de recherche introuvable, Cloudflare), Orpi, Guy Hoquet et le Crous
-(résultats chargés en JavaScript, aucune donnée dans la page).
+**Locservice** n'est pas une agence mais un site de **particuliers** (le
+locataire dépose un dossier, le propriétaire le contacte). Il entre ici parce
+que ses pages ont la forme d'un site d'agence : une carte par bien, code postal
+et loyer charges comprises en clair. Mesuré à la mise en service (octobre
+2026) : 130 meublés sous critères dans la zone, dont 90 jamais vus ailleurs
+(une quarantaine sont probablement des annonces déjà vues à un prix voisin),
+et 18 de moins de 7 jours. Les pages des communes de banlieue sont des
+recherches par rayon : leurs propres biens viennent en tête, puis Lyon ; la
+page 1 suffit donc hors Lyon.
+
+Écartés après mesure (mise à jour d'octobre 2026, enquête Firecrawl) :
+
+- **Orpi** sert désormais ses résultats en HTML, sans JavaScript, mais son
+  stock est déjà vu via Bien'ici (~3 annonces neuves sur la zone) ;
+- **Guy Hoquet** : 36 biens dans le Rhône, aucun sous les critères ;
+- **Stéphane Plaza** : 6 biens à louer pour toute la région, aucun dans la zone ;
+- **Citya** (JSON-LD complet, gratuit) : ~9 neuves, non retenu pour l'instant ;
+- **123loger** : stock ancien (20 annonces sur 21 de plus de 90 jours) ;
+- **Locamoi** : même plateforme que Rentola (abonnement pour les coordonnées),
+  republie des annonces d'agences ;
+- élargissements sans effet : Foncia et Laforêt hors Lyon/Villeurbanne
+  (aucun meublé), Century 21 à Décines (pas de page), Immojeune pages 4-5 ;
+- Sergic (aucun bien dans le Rhône), Immo de France (42 biens dont des
+  parkings), Nestenn (7 biens au-dessus de 900 €), le Crous et Studapart
+  (connexion), Lokaviz (anti-bot, réservé aux étudiants).
 
 Leurs filtres d'URL (prix, type) sont appliqués en JavaScript et ignorés
 d'un simple GET : on lit toutes les pages et on filtre en local. Quand seule

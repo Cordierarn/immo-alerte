@@ -658,6 +658,25 @@
       "carte": "div.card.card__appart",
       "base": "https://www.lodgis.com",
       "meuble": "tous"
+    },
+    {
+      "nom": "Locservice",
+      "urls": [
+        "https://www.locservice.fr/rhone-69/location-meuble-lyon.html",
+        "https://www.locservice.fr/rhone-69/location-meuble-lyon-p{page}.html",
+        "https://www.locservice.fr/rhone-69/location-meuble-villeurbanne.html",
+        "https://www.locservice.fr/rhone-69/location-meuble-bron.html",
+        "https://www.locservice.fr/rhone-69/location-meuble-venissieux.html",
+        "https://www.locservice.fr/rhone-69/location-meuble-saint-priest.html",
+        "https://www.locservice.fr/rhone-69/location-meuble-vaulx-en-velin.html",
+        "https://www.locservice.fr/rhone-69/location-meuble-decines-charpieu.html"
+      ],
+      "page_debut": 2,
+      "pages": 10,
+      "carte": "article",
+      "lien": "a[href*='/rhone-69/location-']",
+      "base": "https://www.locservice.fr",
+      "meuble": "tous"
     }
   ]
 }
