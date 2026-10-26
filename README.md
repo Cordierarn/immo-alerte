@@ -232,7 +232,7 @@ tous les topics connus, et un appui sur la notification ouvre l'annonce.
 | HousingAnywhere | ✅ intégré (coloc) | 0 | Chambres meublées, banlieue est ~450 €. Bloque `requests`, servi à urllib |
 | Spotahome | ✅ intégré (coloc) | 0 | Chambres meublées vérifiées, budget filtré côté serveur |
 | Appartager | ✅ intégré (coloc) | 0 | Beaucoup de particuliers, code postal sur chaque carte |
-| Locservice | ✅ intégré (agences) | 0 | Particuliers, ~440 meublés à Lyon, servi tel quel |
+| Locservice | ❌ désactivé | 0 | Abonnement locataire 29 €/mois pour être mis en relation, et 55 % des annonces déjà louées (voir plus bas) |
 | Orpi | ❌ | — | Servi en HTML depuis 2026, mais stock déjà repris par Bien'ici (~3 annonces neuves mesurées) |
 | Studapart | ❌ | — | Connexion obligatoire : la page publique ne liste que des résidences |
 | Studapart / Lokaviz | ❌ | — | Connexion obligatoire avant toute recherche |
@@ -340,7 +340,7 @@ neuf.
 | Lodgis | Lyon (52 meublés) | tout est meublé |
 | Foncia | Lyon + Villeurbanne, pages « meublé » | la carte — **Scrapfly, 25 cr/page** |
 | Laforêt | Lyon + Villeurbanne | la carte — Scrapfly, 1 cr/page |
-| Locservice | Lyon (10 pages) + page 1 des 6 autres communes | tout est meublé (pages « location-meublé ») |
+| Locservice (désactivé) | Lyon (10 pages) + page 1 des 6 autres communes | tout est meublé (pages « location-meublé ») |
 
 Foncia et Laforêt sont derrière Cloudflare : `"scrapfly": {"heures", "cout_max"}`
 leur applique les garde-fous des autres providers payants. Foncia coûte cher
@@ -357,6 +357,20 @@ et loyer charges comprises en clair. Mesuré à la mise en service (octobre
 et 18 de moins de 7 jours. Les pages des communes de banlieue sont des
 recherches par rayon : leurs propres biens viennent en tête, puis Lyon ; la
 page 1 suffit donc hors Lyon.
+
+**Désactivé le jour même** (`enabled: false`), après un premier passage en
+production. Deux défauts que la mesure n'avait pas vus :
+
+- **55 % du stock est déjà loué** : 298 annonces sur 537 portent l'étiquette
+  « Loué » (`div.accommodation-ad-tag`) et restent en ligne. Sur les 91
+  notifications du premier passage, 62 menaient à un logement « Loué / Occupé ».
+  « Neuve » voulait dire « jamais vue », pas « disponible ».
+- **Le contact est payant** : le locataire ne contacte pas le propriétaire, il
+  publie une candidature, visible des propriétaires contre un abonnement de
+  29 €/mois. C'est la raison qui avait déjà écarté Rentola et Locamoi.
+
+L'entrée reste dans `config.json`. Pour la réactiver (en cas d'abonnement),
+il faudra d'abord écarter les cartes étiquetées « Loué ».
 
 Écartés après mesure (mise à jour d'octobre 2026, enquête Firecrawl) :
 

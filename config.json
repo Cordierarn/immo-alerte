@@ -676,7 +676,9 @@
       "carte": "article",
       "lien": "a[href*='/rhone-69/location-']",
       "base": "https://www.locservice.fr",
-      "meuble": "tous"
+      "meuble": "tous",
+      "enabled": false,
+      "_note": "Desactive le 2026-10-26 : abonnement locataire 29 EUR/mois pour etre mis en relation, et 55 % des annonces etiquetees 'Loue' (298 sur 537) restent en ligne."
     }
   ]
 }
