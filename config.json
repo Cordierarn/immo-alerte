@@ -185,10 +185,7 @@
           ],
           "cout_max": 45,
           "search_url": [
-            "https://www.seloger.com/immobilier/locations/immo-saint-priest-69/bien-appartement/",
-            "https://www.seloger.com/immobilier/locations/immo-bron-69/bien-appartement/",
-            "https://www.seloger.com/immobilier/locations/immo-venissieux-69/bien-appartement/",
-            "https://www.seloger.com/immobilier/locations/immo-lyon-69/bien-appartement/"
+            "https://www.seloger.com/classified-search?distributionTypes=Rent&estateTypes=Apartment&furnished=Full&locations=AD08FR28808,AD08FR28950,AD08FR28714,AD08FR28944,AD08FR28973,AD08FR28941,AD08FR28958&priceMax=650&order=DateDesc"
           ]
         },
         "logicimmo": {
@@ -466,6 +463,19 @@
           "search_url": [
             "https://www.superimmo.com/location/appartement/rhone-alpes/rhone?sort=created_at&price_max=650"
           ]
+        },
+        "seloger": {
+          "enabled": true,
+          "heures": [
+            8,
+            13,
+            18
+          ],
+          "cout_max": 45,
+          "search_url": [
+            "https://www.seloger.com/classified-search?distributionTypes=Rent&estateTypes=Apartment&furnished=Full&locations=AD08FR28808,AD08FR28950,AD08FR28714,AD08FR28944,AD08FR28973,AD08FR28941,AD08FR28958&priceMax=650&order=DateDesc"
+          ],
+          "_note": "Meme URL que le logement : la page est partagee dans le passage (0 credit). Ses meubles sous 650 EUR sont surtout des chambres en colocation."
         }
       },
       "notif_titre": "Coloc",

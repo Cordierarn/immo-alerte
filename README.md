@@ -25,7 +25,7 @@ GitHub Actions — 8h, 10h, 12h, 13h, 15h, 18h, 20h (heure de Paris)
         │
         ├── PAYANT ── Leboncoin  (Scrapfly + ASP, DataDome)
         │             PAP        (Scrapfly + ASP, Cloudflare)
-        │             SeLoger    (Scrapfly + ASP, communes prioritaires)
+        │             SeLoger    (Scrapfly + ASP, une URL pour la zone)
         │             Entreparticuliers, Figaro Immo, Superimmo
         │                        (Scrapfly + ASP, Cloudflare, 1 cr/page)
         │                  ▲
@@ -150,7 +150,7 @@ Chaque entrée porte son ou ses codes postaux :
 | Clé | Rôle |
 |---|---|
 | `cp` | Codes postaux de la commune : **c'est la clé de rattachement** |
-| `prioritaire` | Commune assez centrale pour justifier un appel SeLoger payant |
+| `prioritaire` | Commune centrale (servait à choisir les URL SeLoger par commune, remplacées par une URL de zone) |
 | `requete` | Nom à envoyer aux sites quand il diffère du nom affiché |
 | `alias` | Autres noms acceptés (communes fusionnées) |
 | `cp_only` | Reconnue au code postal seulement, jamais au nom |
@@ -221,7 +221,7 @@ tous les topics connus, et un appui sur la notification ouvre l'annonce.
 | ParuVendu | ✅ intégré | 0 | Beaucoup de particuliers, HTML servi tel quel |
 | Leboncoin | ✅ Scrapfly | 30 cr/appel | DataDome → ASP. Source la plus riche en particuliers |
 | PAP | ✅ Scrapfly | 40-80 cr/appel | Cloudflare. **Une seule requête départementale** (voir plus bas) |
-| SeLoger | ✅ Scrapfly | 35 cr × 4 URL | DataDome. Une URL par commune + une pour Lyon entier |
+| SeLoger | ✅ Scrapfly | 35 cr × 1 URL | DataDome. Une URL filtrée (meublé, prix max) pour les 7 communes ; page partagée avec la coloc |
 | Entreparticuliers | ✅ Scrapfly | 1 cr/appel | Cloudflare. 100 % particuliers, page départementale (meublé non filtrable, voir plus bas) |
 | Figaro Immo | ✅ Scrapfly | 1 cr/appel | Cloudflare. Agrégateur d'agences, ~15 nouveautés/jour ≤ 650 € dans le Rhône |
 | Superimmo | ✅ Scrapfly | 1 cr/appel | Cloudflare. Agrégateur d'agences, meublé/colocation affichés en clair |
@@ -416,9 +416,9 @@ demandes déguisées en offres (« Recherche studio sur Lyon » arrive avec
    c'est ce qui garantit que la veille immo n'assèche pas l'autre projet.
 
 Projection : **~6 300 crédits/mois** pour Leboncoin (7 passages/jour, 30 cr),
-**~12 600** pour SeLoger (3 passages/jour × 4 URL × 35 cr) et **~5 400** pour
+**~3 150** pour SeLoger (3 passages/jour × 1 URL × 35 cr) et **~5 400** pour
 PAP (3 passages/jour, ~60 cr en moyenne). La veille parking ajoute **~2 700**
-(Leboncoin, 3 passages/jour × 30 cr), soit **~27 000 au total, 16 % du
+(Leboncoin, 3 passages/jour × 30 cr), soit **~17 550 au total, 11 % du
 quota**.
 
 Les cadences des deux veilles sont suivies séparément (`parking:leboncoin` et
@@ -432,35 +432,44 @@ commune. Leboncoin fait tenir les 32 communes dans **une seule URL**, et les
 trois providers gratuits couvrent la zone entière sans rien dépenser. C'est la
 raison pour laquelle SeLoger est limité aux communes `prioritaire` : le passer
 sur les 33 communes coûterait ~104 000 crédits/mois, soit les deux tiers du
-quota pour un stock largement redondant avec Bien'ici.
+quota pour un stock largement redondant avec Bien'ici. Depuis octobre 2026, une
+seule URL filtrée couvre toute la zone (voir « Le cas SeLoger »).
 
 La contrainte n'est donc toujours pas le budget mais la **réactivité** : une
 annonce publiée à 10 h 05 n'est signalée qu'à 12 h. Ajouter une heure dans
-`heures` coûte ~915 crédits/mois côté Leboncoin, ~8 500 côté SeLoger.
+`heures` coûte ~915 crédits/mois côté Leboncoin, ~1 050 côté SeLoger.
 
 ### Le cas SeLoger
-
-SeLoger a abandonné `list.htm`. Le schéma actuel n'accepte **qu'une localité
-par URL**, d'où `search_url` qui prend une liste. L'URL départementale a été
-testée et écartée : sur 30 annonces de la page 1, 4 seulement étaient dans la
-zone, toutes des colocations — la page est saturée par Lyon et Villeurbanne.
 
 Son JSON-LD ne contient que des agrégats (nombre d'annonces, fourchette de
 prix). Les données sont donc lues dans les cartes HTML, via les attributs
 `data-testid` — nettement plus stables que les classes CSS générées.
 
-Rendement observé : 4 annonces exploitables sur les 6 communes d'origine, contre
-~20 pour Leboncoin. Beaucoup de colocations sous 650 € et un stock qui recoupe
-Bien'ici, déjà gratuit. Si le budget devenait un sujet, c'est le premier à
-désactiver.
+**Octobre 2026 : une URL pour toute la zone.** Les anciennes URL
+(`/immobilier/locations/immo-<commune>-69/bien-appartement/`) n'acceptaient
+qu'une commune et ignoraient prix et meublé : sur 30 annonces de la page de
+Lyon, une seule passait les filtres. Le moteur `/classified-search`, repéré
+avec Firecrawl dans les liens des cartes, prend **plusieurs localités** et
+applique côté serveur `furnished=Full`, `priceMax=650` et le tri par date.
+Une URL couvre les 7 communes (codes `AD08FR…` lus dans les liens de SeLoger)
+pour 35 crédits, au lieu de 4 URL à 140.
 
-C'est ce faible rendement, combiné à la facturation à la commune, qui justifie
-de le restreindre aux communes `prioritaire` plutôt que de l'étendre à toute la
-zone. Les deux URL d'arrondissement (`lyon-8eme-69008`, `lyon-3eme-69003`)
-**n'ont pas pu être vérifiées** : DataDome bloquant tout accès direct, un slug
-invalide ne se distingue pas d'un slug correct avant le premier appel réel. Si
-elles sont fausses, le premier passage écrira `debug_seloger6.html` /
-`debug_seloger7.html` et il suffira de corriger `search_url`.
+Ses meublés sous 650 € sont surtout des **chambres en colocation** : 27 sur 30
+en page 1, dont 26 jamais vues. La veille coloc lit donc la même URL ; dans un
+même passage la page est servie par `_DEJA_SCRAPE`, sans crédit.
+
+La même enquête a mis au jour quatre défauts du parseur, corrigés :
+
+- **loyers à centimes** : « 501,36 € » était lu 36 €, si bien qu'un
+  1 060,50 € passait sous le plafond avec un faux prix ;
+- **titre** : un encart partenaire (« Comparez les déménageurs ») glissé
+  dans la carte devenait le titre de la notification ;
+- **ville** : « Lyon 9ème arrondissement » donnait l'empreinte
+  `lyon9arrondissement`, jamais rapprochée du `lyon9` des autres sites ;
+- **identifiant** : il était tiré du lien entier, dont la fin
+  (`…detail_L`, `_XL`, `_M`) change avec la taille de la carte. La même
+  annonce revenait sous un nouvel identifiant. C'est désormais le code
+  d'annonce (`26WZFJBVANUY`).
 
 ### Réglages
 

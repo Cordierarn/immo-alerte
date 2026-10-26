@@ -14,7 +14,7 @@ Providers payants via Scrapfly (anti-bot, cadence et budget encadrés) :
   - Leboncoin  : ~30 crédits/appel, la source qui apporte vraiment du stock
   - PAP        : 100% particuliers ; passé sous Scrapfly depuis que
                  Cloudflare bloque l'accès direct (une requête départementale)
-  - SeLoger    : 35 crédits par commune, limité aux communes prioritaires
+  - SeLoger    : 35 crédits, une URL filtrée pour toute la zone
   - Logic-Immo : une requête pour toute la zone
   - Entreparticuliers, Figaro Immo, Superimmo : Cloudflare, mais 1 crédit
                  la page départementale

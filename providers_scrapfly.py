@@ -270,6 +270,10 @@ def _slg_cartes(html, cfg, zone, garder, log):
     cartes = soup.select('[data-testid="serp-core-classified-card-testid"]')
     results = []
     for c in cartes:
+        # encart partenaire (« Comparez les déménageurs ») glissé entre le
+        # prix et le titre : il devenait le titre de la notification
+        for pub in c.select('[data-testid="cc-mfe.partner-link"]'):
+            pub.decompose()
         adresse = _slg_txt(c, "cardmfe-description-box-address")
         brut = _slg_txt(c, "cardmfe-description-box-text-test-id")
         prix_txt = _slg_txt(c, "cardmfe-price-testid")
@@ -285,7 +289,9 @@ def _slg_cartes(html, cfg, zone, garder, log):
         if not garder(titre, desc):
             continue
 
-        m = re.search(r"([\d\s ]+)€", prix_txt)
+        # « 501,36 €/mois » : les centimes ne doivent pas être pris pour le
+        # loyer (ils donnaient 36 €, et un 1 060,50 € passait sous le plafond)
+        m = re.search(r"(\d[\d\s ]*)(?:,\d+)?\s*€", prix_txt)
         if not m:
             continue
         prix = int(re.sub(r"\D", "", m.group(1)))
@@ -300,7 +306,10 @@ def _slg_cartes(html, cfg, zone, garder, log):
         surface = float(ms.group(1).replace(",", ".")) if ms else None
 
         mv = re.search(r"([^,]+?)\s*\((\d{5})\)", adresse)
-        ville = mv.group(1).strip() if mv else adresse.split(",")[-1].strip()
+        # « Lyon 9ème arrondissement » donnait l'empreinte lyon9arrondissement,
+        # jamais rapprochée du « Lyon 9e » des autres sites
+        ville = _ville_zone(zone, mv.group(2), mv.group(1).strip()) if mv \
+            else adresse.split(",")[-1].strip()
         # SeLoger propose souvent des communes « aux alentours ». L'adresse
         # porte le code postal (« Lyon 8ème (69008) ») : il tranche seul, et
         # c'est le seul moyen fiable de distinguer les arrondissements.
@@ -313,7 +322,10 @@ def _slg_cartes(html, cfg, zone, garder, log):
             lien = a["href"]
             if not lien.startswith("http"):
                 lien = "https://www.seloger.com" + lien
-        ident = re.search(r"(\d{6,})", lien)
+        # code d'annonce (« 26WZFJBVANUY ») plutôt que le lien : sa fin
+        # (« …detail_L » / « _XL ») change avec la taille de la carte, et la
+        # même annonce revenait sous un nouvel identifiant
+        ident = re.search(r"/([0-9A-Z]{12})(?=[?#/]|$)", lien) or re.search(r"(\d{6,})", lien)
 
         results.append({
             "id": f"seloger-{ident.group(1) if ident else lien}",
@@ -328,14 +340,14 @@ def _slg_cartes(html, cfg, zone, garder, log):
 
 
 def provider_seloger(cfg, zone, sf_cfg, garder, log, dev=False):
-    """SeLoger — une requête PAR COMMUNE.
+    """SeLoger — une seule URL pour toute la zone.
 
-    SeLoger a abandonné list.htm : le nouveau schéma d'URL n'accepte qu'une
-    seule localité, et l'URL départementale est saturée de Lyon (mesuré :
-    4 annonces sur 30 dans notre zone, toutes des colocations). Il faut donc
-    une URL par commune, d'où 'search_url' qui accepte une liste.
+    Le moteur /classified-search accepte plusieurs localités et applique
+    côté serveur meublé, loyer maximum et tri par date : la page 1 ne
+    contient que des candidats, au lieu de 30 annonces tous prix dont une
+    seule passait les filtres avec l'ancienne URL par commune.
 
-    C'est le provider le plus cher du projet : 40 crédits par URL et par
+    C'est le provider le plus cher du projet : 35 à 40 crédits par URL et par
     passage. Voir le README avant d'en ajouter.
     """
     p = (sf_cfg.get("providers") or {}).get("seloger") or {}
