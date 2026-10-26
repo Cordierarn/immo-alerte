@@ -5,3 +5,4 @@ __pycache__/
 topic.txt
 scrapfly_key.txt
 debug_*.html
+.firecrawl/
