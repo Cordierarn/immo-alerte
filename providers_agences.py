@@ -23,8 +23,8 @@ Chaque site déclare :
   base     préfixe des liens relatifs
   meuble   'carte'  : la carte dit « meublé » quand c'en est un
            'tous'   : le site ne loue que du meublé (résidences, Lodgis)
-           'detail' : seule la fiche le dit ; on l'ouvre pour les candidats
-                      qui passent tous les autres filtres, verdict en cache
+           'detail' : la fiche fait foi ; on l'ouvre pour les candidats qui
+                      passent tous les autres filtres, verdict en cache
   coloc    true si le site ne fait que de la colocation
   scrapfly {heures, cout_max} pour un site derrière Cloudflare/DataDome
            (Foncia, Laforêt) : mêmes garde-fous que les autres providers
@@ -55,7 +55,8 @@ MEUBLE_RE = re.compile(r"(?<!non )(?<!non-)meubl", re.I)
 TYPE_RE = re.compile(r"\b(appartement|studio|chambre|colocation|maison|duplex|loft|t\d|f\d)\b", re.I)
 # la fiche Oralia / Square Habitat porte un champ « Meublé Non » : chercher
 # le mot seul le prenait pour un oui (7 faux positifs sur 7)
-CHAMP_MEUBLE_RE = re.compile(r"meubl[ée]e?s?\s*[:|]?\s*(oui|non)\b", re.I)
+# … mais pas le filtre de recherche « Meublé | Non meublé » des pages Century 21
+CHAMP_MEUBLE_RE = re.compile(r"meubl[ée]e?s?\s*[:|]?\s*(oui|non)\b(?!\s*meubl)", re.I)
 EXCLUS_RE = re.compile(r"\b(parking|garage|box|cave|local|bureau|commerce|terrain)\b", re.I)
 
 
@@ -98,6 +99,15 @@ def _meuble_sur_fiche(url, log):
     if html is None:
         return None
     soup = BeautifulSoup(html, "html.parser")
+    # Location Etudiant titre « Studio à Lyon 4ème - Vide - 40m² » tandis
+    # que sa description générée dit « à louer meublé » : le titre de la
+    # fiche fait foi avant le texte (47 « meublés » sur 47 étaient vides)
+    titres = " ".join(h.get_text(" ", strip=True) for h in soup.select("h1"))
+    mt = re.search(r"(?:^|[\s-])(vide|meublée?)(?:[\s-]|$)", titres, re.I)
+    if mt:
+        verdict = mt.group(1).lower() != "vide"
+        zone_mod.cache_ecrire("meuble", url, verdict)
+        return verdict
     # menus et pieds de page parlent tous de « location meublée »
     for t in soup(["script", "style", "nav", "header", "footer", "noscript"]):
         t.decompose()
@@ -157,8 +167,9 @@ def _cartes(html, site, cfg, zone, garder, log):
             mode = site.get("meuble", "carte")
             if mode == "carte" and not MEUBLE_RE.search(texte):
                 continue
-            if mode == "detail" and not MEUBLE_RE.search(texte) \
-                    and _meuble_sur_fiche(url, log) is False:
+            # la fiche fait foi même si la carte dit « meublé » : chez
+            # Location Etudiant cette mention vient d'un texte généré
+            if mode == "detail" and _meuble_sur_fiche(url, log) is False:
                 continue
 
         cps = [cp for cp in zone_mod.CP_RE.findall(texte) if cp in zone.cps]
