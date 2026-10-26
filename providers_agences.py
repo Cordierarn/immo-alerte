@@ -180,6 +180,9 @@ def _cartes(html, site, cfg, zone, garder, log):
 # racine de config.json, chaque recherche ne fait que l'activer
 CONFIG = json.loads((Path(__file__).parent / "config.json").read_text(encoding="utf-8"))
 
+# --gratuit promet 0 crédit : les sites Scrapfly sont alors sautés
+SANS_SCRAPFLY = False
+
 # pages lues pendant ce passage : logement et coloc parcourent les mêmes
 # sites, inutile de télécharger deux fois les 36 pages d'Oralia
 _LUES = {}
@@ -239,7 +242,7 @@ def provider_agences(cfg, zone, garder, log):
     sites = CONFIG.get("agences") or []
     results = []
     for site in sites:
-        if not site.get("enabled", True):
+        if not site.get("enabled", True) or (site.get("scrapfly") and SANS_SCRAPFLY):
             continue
         trouves, vues, echecs, attente = [], 0, 0, False
         groupes = list(_pages(site))

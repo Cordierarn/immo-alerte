@@ -467,6 +467,7 @@ def passage(cfg, init_mode, dev_mode, gratuit_seul):
     gratuits = [("Bien'ici", provider_bienici)]
     gratuits += list(providers_gratuits.PROVIDERS_GRATUITS)
     gratuits += list(providers_agences.PROVIDERS_AGENCES)
+    providers_agences.SANS_SCRAPFLY = gratuit_seul
     for name, provider in gratuits:
         try:
             found = provider(cfg, zone, garder, log)
